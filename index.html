@@ -175,6 +175,9 @@
       .auth-foot { color:var(--muted); font-size:12px; margin-top:6px; }
       .field-row { display:flex; gap:8px; align-items:center; }
       .field-row label { color:var(--muted); font-size:12px; }
+      .icon-btn { width: 36px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+      .icon-btn:hover { color: #e2f3ff; border-color: #37517e; background: #0b1220; }
+      .icon-btn svg { width: 18px; height: 18px; display: block; }
       @media (max-width: 600px) {
         .modal-backdrop.open { align-items: flex-end; }
         .modal-card { width: 100%; border-radius: 12px 12px 0 0; }
@@ -362,6 +365,7 @@
             <div class="field-row">
               <label style="min-width:80px;">Password</label>
               <input id="authPassword" type="password" placeholder="••••••••" style="flex:1; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;" />
+              <button id="togglePassword" type="button" class="icon-btn" aria-label="Show password" title="Show password"></button>
             </div>
             <div class="auth-actions">
               <button id="authSubmit" class="btn" style="flex:1;">Continue</button>
@@ -509,6 +513,22 @@
       const authTitle = document.getElementById('authTitle');
       const accountLabel = document.getElementById('accountLabel');
       const logoutBtn = document.getElementById('logoutBtn');
+      const togglePasswordBtn = document.getElementById('togglePassword');
+      let isPasswordVisible = false;
+      function renderPasswordToggle() {
+        togglePasswordBtn.innerHTML = isPasswordVisible
+          ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a21.66 21.66 0 0 1 5.06-5.88"/><path d="M1 1l22 22"/><path d="M9.88 9.88A3 3 0 0 0 15 12c0 .86-.36 1.64-.94 2.2"/></svg>'
+          : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+        const label = isPasswordVisible ? 'Hide password' : 'Show password';
+        togglePasswordBtn.setAttribute('aria-label', label);
+        togglePasswordBtn.setAttribute('title', label);
+      }
+      togglePasswordBtn.addEventListener('click', () => {
+        isPasswordVisible = !isPasswordVisible;
+        authPassword.type = isPasswordVisible ? 'text' : 'password';
+        renderPasswordToggle();
+      });
+      renderPasswordToggle();
       // Firebase setup (if config present)
       (function initFirebase(){
         if (!window.FIREBASE_CONFIG) return;
