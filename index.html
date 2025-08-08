@@ -182,7 +182,7 @@
       /* Auth improvements */
       .auth-card { max-width: 520px; width: 92vw; }
       .auth-tabs { display:flex; gap:4px; margin-bottom:10px; }
-      .auth-tab { flex:1; padding:10px 12px; border:1px solid var(--border); background:#0b1220; color:var(--muted); border-radius:8px; cursor:pointer; text-align:center; }
+      .auth-tab { flex:1; padding:10px 12px; border:1px solid var(--border); background:#0b1220; color: var(--muted); border-radius:8px; cursor:pointer; text-align:center; }
       .auth-tab.active { background:#152238; color:#e2f3ff; border-color:#37517e; }
       .auth-error { color:#ffb4b4; background:#3b1f1f; border:1px solid #6b2a2a; padding:8px; border-radius:8px; display:none; }
       .auth-actions { display:flex; gap:8px; align-items:center; }
@@ -249,6 +249,12 @@
        }
       .event-block:active { transform: scale(0.98); box-shadow: 0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2); }
       .event-block .subtitle { display: block; font-size: 11px; opacity: 0.85; font-weight: 500; }
+      /* Added smart/UX styles */
+      .event-block.now { outline: 2px solid #fde047; box-shadow: 0 6px 18px rgba(253, 224, 71, 0.3), inset 0 1px 0 rgba(255,255,255,0.25); }
+      .event-block.cancelled { filter: grayscale(0.6); opacity: 0.6; text-decoration: line-through; cursor: default; }
+      .break-block { position: absolute; top: calc(50% - 10px); height: 20px; background: rgba(255,255,255,0.06); border: 1px dashed var(--grid-line); border-radius: 10px; color: var(--muted); font-size: 11px; display:flex; align-items:center; justify-content:center; pointer-events: none; }
+      .now-indicator { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--danger); opacity: 0.9; pointer-events: none; }
+      .next-banner { margin: 6px 6px 10px 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: rgba(11,18,32,0.75); color: #e5e7eb; font-size: 13px; }
 
       .footer {
         color: var(--muted);
@@ -304,6 +310,7 @@
       [data-theme="light"] .icon-btn:hover { color: #0f172a; border-color: #93c5fd; background: #ffffff; }
       [data-theme="light"] .auth-tab { background:#ffffff; color: var(--muted); border-color: var(--border); }
       [data-theme="light"] .auth-tab.active { background:#e8f0ff; color:#0f172a; border-color:#93c5fd; }
+      [data-theme="light"] .next-banner { background: rgba(255,255,255,0.9); }
 
       /* Timetable quality-of-life */
       .timetable.panel .tt-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
@@ -350,6 +357,16 @@
        .drawer-header { display:flex; align-items:center; justify-content:space-between; padding: 14px; border-bottom:1px solid var(--border); }
        .drawer-body { padding: 12px 14px 14px 14px; overflow: auto; flex: 1; }
        @media (max-width: 600px) { .side-drawer { width: 100%; } }
+
+      /* Compact mode */
+      body.compact .day-row { min-height: 44px; }
+      body.compact .legend-top .corner { height: 32px; }
+      body.compact .legend-time-cell { line-height: 32px; font-size: 11px; }
+      body.compact .event-block { font-size: 11px; padding: 6px; }
+
+      /* Week switch animation */
+      .rows.week-anim { animation: weekSlide 220ms ease; }
+      @keyframes weekSlide { from { opacity: 0; transform: translateX(var(--week-dir, 12px)); } to { opacity: 1; transform: translateX(0); } }
     </style>
   </head>
   <body>
@@ -383,6 +400,17 @@
             <div class="row" style="align-items:flex-start;">
               <label style="margin-top:8px;">Days</label>
               <div id="daysChooser" class="days"></div>
+            </div>
+            <!-- Added compact mode and week switcher -->
+            <div class="row">
+              <label for="compactMode">Compact mode</label>
+              <input id="compactMode" type="checkbox" />
+            </div>
+            <div class="row">
+              <label>Week</label>
+              <button id="prevWeek" class="btn secondary" type="button">Previous</button>
+              <span id="weekLabel" style="min-width:120px; text-align:center; color:var(--muted);">This week</span>
+              <button id="nextWeek" class="btn secondary" type="button">Next</button>
             </div>
           </div>
         </div>
@@ -424,6 +452,8 @@
       </div>
 
        <div class="timetable panel" id="ttPanel">
+        <!-- Next class banner -->
+        <div id="nextBanner" class="next-banner"></div>
         <div class="tt-scroll">
           <div class="legend-top">
             <div class="corner"></div>
@@ -623,6 +653,9 @@
           end: "18:00",
           activeDays: [...DAYS_ALL],
           rowMinutes: 30,
+          compact: false,
+          weekOffset: 0,
+          classOrder: []
         };
       }
       function saveSettings(s) {
@@ -644,7 +677,8 @@
             teacher: e.teacher || '',
             location: e.location || '',
             mode: e.mode || 'Lecture',
-            notes: e.notes || ''
+            notes: e.notes || '',
+            cancelled: !!e.cancelled
           }));
         }
         const key = STORAGE_KEYS.events + (currentUser?.email ? ':' + currentUser.email : '');
@@ -761,6 +795,12 @@
       const noteClassEl = document.getElementById('noteClass');
       const saveGlobalNoteBtn = document.getElementById('saveGlobalNote');
       const deleteGlobalNoteBtn = document.getElementById('deleteGlobalNote');
+      // New elements
+      const nextBannerEl = document.getElementById('nextBanner');
+      const compactModeEl = document.getElementById('compactMode');
+      const prevWeekBtn = document.getElementById('prevWeek');
+      const nextWeekBtn = document.getElementById('nextWeek');
+      const weekLabelEl = document.getElementById('weekLabel');
       let isPasswordVisible = false;
       function renderPasswordToggle() {
         togglePasswordBtn.innerHTML = isPasswordVisible
@@ -1030,7 +1070,7 @@
         const byDayThenClass = new Map();
         for (const e of eventsInput) {
           if (!settings.activeDays.includes(e.day)) continue;
-          const key = `${e.day}__${e.name.toLowerCase().trim()}`;
+          const key = `${e.day}__${(e.name||'').toLowerCase().trim()}__${e.cancelled?'C':'A'}`;
           if (!byDayThenClass.has(key)) byDayThenClass.set(key, []);
           byDayThenClass.get(key).push({ ...e });
         }
@@ -1071,28 +1111,62 @@
         // Group by class name; single row per class → clicking opens modal summary
         const byName = new Map();
         events.forEach((ev, idx) => {
-          const key = ev.name.trim().toLowerCase();
+          const key = (ev.name||'').trim().toLowerCase();
+          if (!key) return;
           if (!byName.has(key)) byName.set(key, { name: ev.name.trim(), color: ev.color, slots: [] });
           byName.get(key).slots.push({ idx, ev });
         });
+        // Sort by saved class order, fallback to alpha
+        const groups = Array.from(byName.values());
+        const order = settings.classOrder || [];
+        const indexOf = (name) => {
+          const i = order.indexOf(name);
+          return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+        };
+        groups.sort((a,b) => indexOf(a.name) - indexOf(b.name) || a.name.localeCompare(b.name));
 
         const list = document.createElement('div');
-        Array.from(byName.values())
-          .sort((a,b) => a.name.localeCompare(b.name))
-          .forEach(group => {
-            const row = document.createElement('div');
-            row.className = 'event-item';
-            const colorDot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${group.color};margin-right:8px;vertical-align:middle;"></span>`;
-            const summary = document.createElement('div');
-            summary.className = 'event-summary';
-            summary.innerHTML = `${colorDot}<strong>${group.name}</strong>`;
-            const open = document.createElement('button'); open.className = 'btn secondary'; open.textContent = 'View';
-            open.addEventListener('click', () => {
-              openClassDetailsByName(group.name);
-            });
-            row.appendChild(summary); row.appendChild(open);
-            list.appendChild(row);
+        let dragName = null;
+        groups.forEach(group => {
+          const row = document.createElement('div');
+          row.className = 'event-item';
+          row.draggable = true;
+          row.dataset.name = group.name;
+          row.style.cursor = 'grab';
+          const colorDot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${group.color};margin-right:8px;vertical-align:middle;"></span>`;
+          const summary = document.createElement('div');
+          summary.className = 'event-summary';
+          summary.innerHTML = `${colorDot}<strong>${group.name}</strong>`;
+          const open = document.createElement('button'); open.className = 'btn secondary'; open.textContent = 'View';
+          open.addEventListener('click', () => { openClassDetailsByName(group.name); });
+          // DnD handlers
+          row.addEventListener('dragstart', (e) => { dragName = group.name; e.dataTransfer.setData('text/plain', group.name); row.style.opacity = '0.6'; });
+          row.addEventListener('dragend', () => { row.style.opacity = ''; });
+          row.addEventListener('dragover', (e) => { e.preventDefault(); row.style.borderColor = '#37517e'; });
+          row.addEventListener('dragleave', () => { row.style.borderColor = 'var(--border)'; });
+          row.addEventListener('drop', (e) => {
+            e.preventDefault(); row.style.borderColor = 'var(--border)';
+            const from = dragName || e.dataTransfer.getData('text/plain');
+            const to = group.name;
+            if (!from || from === to) return;
+            // Reorder DOM
+            const children = Array.from(list.children);
+            const fromEl = children.find(c => c.dataset.name === from);
+            const toEl = row;
+            if (fromEl && toEl) {
+              if (fromEl.compareDocumentPosition(toEl) & Node.DOCUMENT_POSITION_FOLLOWING) {
+                list.insertBefore(fromEl, toEl);
+              } else {
+                list.insertBefore(fromEl, toEl.nextSibling);
+              }
+              // Persist new order
+              settings.classOrder = Array.from(list.children).map(x => x.dataset.name);
+              saveSettings(settings);
+            }
           });
+          row.appendChild(summary); row.appendChild(open);
+          list.appendChild(row);
+        });
         eventsContainer.appendChild(list);
       }
 
@@ -1155,6 +1229,52 @@
           dayToRow[day] = line.querySelector('.day-row');
         });
 
+        // For break visualization, collect active (non-cancelled) events per day
+        const activeByDay = new Map();
+        for (const e of merged) {
+          if (e.cancelled) continue;
+          if (!activeByDay.has(e.day)) activeByDay.set(e.day, []);
+          activeByDay.get(e.day).push(e);
+        }
+        for (const [day, list] of activeByDay.entries()) {
+          const row = dayToRow[day];
+          if (!row) continue;
+          const sorted = list.slice().sort((a,b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+          for (let i = 0; i < sorted.length - 1; i++) {
+            const curEnd = clamp(timeToMinutes(sorted[i].end), startMin, endMin);
+            const nextStart = clamp(timeToMinutes(sorted[i+1].start), startMin, endMin);
+            if (nextStart > curEnd) {
+              const leftPx = ((curEnd - startMin) / step) * stepPx + 2;
+              const widthPx = ((nextStart - curEnd) / step) * stepPx - 4;
+              const gapMin = (nextStart - curEnd);
+              const bb = document.createElement('div');
+              bb.className = 'break-block';
+              bb.style.left = `${leftPx}px`;
+              bb.style.width = `${Math.max(12, widthPx)}px`;
+              bb.textContent = `Break ${gapMin}m`;
+              row.appendChild(bb);
+            }
+          }
+        }
+
+        const now = new Date();
+        const jsDay = now.getDay(); // 0=Sun..6=Sat
+        const todayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][jsDay];
+        const today = todayName === 'Sun' ? 'Sun' : todayName; // keep consistent
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+
+        // Add current time indicator on today's row
+        const todayRow = dayToRow[todayName === 'Sun' ? 'Sun' : todayName];
+        if (todayRow && nowMin >= startMin && nowMin <= endMin) {
+          // remove existing
+          todayRow.querySelectorAll('.now-indicator').forEach(n => n.remove());
+          const indicator = document.createElement('div');
+          indicator.className = 'now-indicator';
+          const leftPx = ((nowMin - startMin) / step) * stepPx + 2;
+          indicator.style.left = `${leftPx}px`;
+          todayRow.appendChild(indicator);
+        }
+
         for (const e of merged) {
           const row = dayToRow[e.day];
           if (!row) continue;
@@ -1166,6 +1286,11 @@
 
           const block = document.createElement('div');
           block.className = 'event-block';
+          if (e.cancelled) block.classList.add('cancelled');
+          // highlight if ongoing and not cancelled
+          const isToday = e.day === todayName;
+          const isNow = isToday && !e.cancelled && nowMin >= s && nowMin < t;
+          if (isNow) block.classList.add('now');
           block.style.left = `${leftPx}px`;
           block.style.width = `${Math.max(12, widthPx)}px`;
           block.style.background = `linear-gradient(180deg, ${e.color}cc, ${e.color})`;
@@ -1179,11 +1304,13 @@
            if (e.teacher) metaPieces.push(e.teacher);
            try { const arr = JSON.parse(e.notes||'[]'); if (Array.isArray(arr) && arr.length) metaPieces.push('📝'+arr.length); }
            catch { if (e.notes) metaPieces.push('📝'); }
+           if (e.cancelled) metaPieces.push('Cancelled');
           const metaText = metaPieces.join(' • ');
           block.innerHTML = `${e.name}${metaText ? `<span class=\"subtitle\">${metaText}</span>` : ''}<span class=\"subtitle\">${s12}–${t12}</span>`;
           block.addEventListener('click', () => openClassDetailsByName(e.name));
           row.appendChild(block);
         }
+        updateNowAndNextUI();
       }
 
       // ---------- Notes (global) ----------
@@ -1315,7 +1442,7 @@
         editTimeSlotsEl.innerHTML = '';
         (editWorkingSlots.length ? editWorkingSlots : []).forEach((slot, idx) => {
           const row = document.createElement('div');
-          row.style.display = 'flex'; row.style.gap = '8px'; row.style.alignItems = 'center';
+          row.style.display = 'flex'; row.style.gap = '8px'; row.style.alignItems = 'center'; row.style.flexWrap='wrap';
           const dayLbl = document.createElement('label'); dayLbl.textContent = 'Day';
           const daySel = document.createElement('select');
           DAYS_ALL.forEach(d => { const o=document.createElement('option'); o.value=d; o.textContent=d; if (d===slot.day) o.selected=true; daySel.appendChild(o); });
@@ -1324,11 +1451,14 @@
           const sIn = document.createElement('input'); sIn.type='time'; sIn.value = slot.start; sIn.addEventListener('change', ()=>{ editWorkingSlots[idx].start = sIn.value; });
           const toLbl = document.createElement('label'); toLbl.textContent = 'To';
           const eIn = document.createElement('input'); eIn.type='time'; eIn.value = slot.end; eIn.addEventListener('change', ()=>{ editWorkingSlots[idx].end = eIn.value; });
+          const cancelledLbl = document.createElement('label'); cancelledLbl.textContent = 'Cancelled';
+          const cancelledIn = document.createElement('input'); cancelledIn.type='checkbox'; cancelledIn.checked = !!slot.cancelled; cancelledIn.addEventListener('change', ()=>{ editWorkingSlots[idx].cancelled = cancelledIn.checked; });
           const del = document.createElement('button'); del.type='button'; del.className='btn secondary'; del.textContent='Remove';
           del.addEventListener('click', () => { editWorkingSlots.splice(idx,1); renderEditSlots(); });
           row.appendChild(dayLbl); row.appendChild(daySel);
           row.appendChild(fromLbl); row.appendChild(sIn);
           row.appendChild(toLbl); row.appendChild(eIn);
+          row.appendChild(cancelledLbl); row.appendChild(cancelledIn);
           row.appendChild(del);
           const wrap = document.createElement('div'); wrap.style.border='1px solid var(--border)'; wrap.style.borderRadius='8px'; wrap.style.padding='8px'; wrap.style.background='var(--panel)'; wrap.appendChild(row);
           editTimeSlotsEl.appendChild(wrap);
@@ -1358,9 +1488,9 @@
         const normalized = (ev.name || '').trim().toLowerCase();
         editWorkingSlots = events
           .filter(x => (x.name || '').trim().toLowerCase() === normalized)
-          .map(x => ({ id: x.id, day: x.day, start: x.start, end: x.end }));
+          .map(x => ({ id: x.id, day: x.day, start: x.start, end: x.end, cancelled: !!x.cancelled }));
         if (editWorkingSlots.length === 0) {
-          editWorkingSlots = [{ day: DAYS_ALL[0], start: '09:00', end: '10:00' }];
+          editWorkingSlots = [{ day: DAYS_ALL[0], start: '09:00', end: '10:00', cancelled: false }];
         }
         renderEditSlots();
         // Notes: parse stored JSON array or fallback to single notes string
@@ -1387,7 +1517,7 @@
       closeDrawerBtn.addEventListener('click', closeDrawer);
       drawerBackdrop.addEventListener('click', closeDrawer);
       addEditSlotBtn.addEventListener('click', () => {
-        editWorkingSlots.push({ day: DAYS_ALL[0], start: '09:00', end: '10:00' });
+        editWorkingSlots.push({ day: DAYS_ALL[0], start: '09:00', end: '10:00', cancelled: false });
         renderEditSlots();
       });
       addNoteBtn.addEventListener('click', () => {
@@ -1420,7 +1550,8 @@
             day: s.day,
             start: s.start,
             end: s.end,
-            notes: JSON.stringify(editWorkingNotes)
+            notes: JSON.stringify(editWorkingNotes),
+            cancelled: !!s.cancelled
           });
         });
         saveEvents(events);
@@ -1457,6 +1588,76 @@
         openDrawerForEvent(matches[0].i);
       }
 
+      // Smart helpers: now/next and compact/week
+      function applyCompactMode() {
+        document.body.classList.toggle('compact', !!settings.compact);
+        if (compactModeEl) compactModeEl.checked = !!settings.compact;
+      }
+      function updateWeekLabel() {
+        const off = settings.weekOffset|0;
+        if (weekLabelEl) weekLabelEl.textContent = off === 0 ? 'This week' : (off > 0 ? `Week +${off}` : `Week ${off}`);
+      }
+      function triggerWeekAnimation(direction) {
+        if (!rowsEl) return;
+        rowsEl.style.setProperty('--week-dir', direction > 0 ? '12px' : '-12px');
+        rowsEl.classList.add('week-anim');
+        rowsEl.addEventListener('animationend', () => rowsEl.classList.remove('week-anim'), { once: true });
+      }
+      function dayIndexFromName(name) {
+        return DAYS_ALL.indexOf(name);
+      }
+      function nameFromDayIndex(idx) {
+        return DAYS_ALL[(idx%7+7)%7];
+      }
+      function getNextEventInfo() {
+        const now = new Date();
+        const todayIdxJs = now.getDay(); // 0 Sun
+        const nameMap = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        const todayName = nameMap[todayIdxJs];
+        const nowMin = now.getHours()*60 + now.getMinutes();
+        // Build search over next 7 days
+        for (let d=0; d<7; d++) {
+          const idx = (todayIdxJs + d) % 7;
+          const dayName = nameMap[idx];
+          const relevant = events.filter(e => e.day === dayName && !e.cancelled);
+          const afterNow = relevant
+            .filter(e => d>0 || timeToMinutes(e.start) > nowMin)
+            .sort((a,b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+          if (afterNow.length) {
+            const ev = afterNow[0];
+            const startMin = timeToMinutes(ev.start);
+            const minsUntil = d*24*60 + (startMin - nowMin);
+            return { ev, dayName, minsUntil };
+          }
+        }
+        return null;
+      }
+      function getOngoingEventInfo() {
+        const now = new Date();
+        const nameMap = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        const todayName = nameMap[now.getDay()];
+        const nowMin = now.getHours()*60 + now.getMinutes();
+        const list = events.filter(e => e.day === todayName && !e.cancelled);
+        for (const e of list) {
+          const s = timeToMinutes(e.start), t = timeToMinutes(e.end);
+          if (nowMin >= s && nowMin < t) return { ev: e, minsLeft: t - nowMin, dayName: todayName };
+        }
+        return null;
+      }
+      function updateNowAndNextUI() {
+        if (!nextBannerEl) return;
+        const ongoing = getOngoingEventInfo();
+        if (ongoing) {
+          const { ev, minsLeft, dayName } = ongoing;
+          nextBannerEl.textContent = `Now: ${ev.name} (${dayName} ${ev.start}–${ev.end}) • ends in ${minsLeft} min`;
+          return;
+        }
+        const next = getNextEventInfo();
+        if (!next) { nextBannerEl.textContent = 'No upcoming classes'; return; }
+        const { ev, dayName, minsUntil } = next;
+        nextBannerEl.textContent = `Next: ${ev.name} (${dayName} ${ev.start}) • starts in ${minsUntil} min`;
+      }
+
       // Handlers
       window.addEventListener('resize', () => { renderTimetable(); });
       applyTimeBtn.addEventListener("click", () => {
@@ -1472,6 +1673,19 @@
         saveSettings(settings);
         renderTimetable();
       });
+      if (compactModeEl) {
+        compactModeEl.addEventListener('change', () => {
+          settings.compact = !!compactModeEl.checked;
+          saveSettings(settings);
+          applyCompactMode();
+          renderTimetable();
+        });
+      }
+      function initWeekControls() {
+        updateWeekLabel();
+        if (prevWeekBtn) prevWeekBtn.addEventListener('click', () => { settings.weekOffset = (settings.weekOffset|0) - 1; saveSettings(settings); updateWeekLabel(); triggerWeekAnimation(-1); });
+        if (nextWeekBtn) nextWeekBtn.addEventListener('click', () => { settings.weekOffset = (settings.weekOffset|0) + 1; saveSettings(settings); updateWeekLabel(); triggerWeekAnimation(1); });
+      }
 
       addClassBtn.addEventListener("click", () => {
         const name = (classNameEl.value || "").trim();
@@ -1488,7 +1702,7 @@
           if (!s || !e) { alert("Please set start and end time for all slots."); return; }
           if (timeToMinutes(e) <= timeToMinutes(s)) { alert(`End time must be after start time for ${s}–${e}.`); return; }
           if (!d) { alert("Select a day for each slot."); return; }
-          newEvents.push({ id: crypto.randomUUID(), name, day: d, start: s, end: e, color, teacher, location, mode: sl.mode || 'Lecture', notes });
+          newEvents.push({ id: crypto.randomUUID(), name, day: d, start: s, end: e, color, teacher, location, mode: sl.mode || 'Lecture', notes, cancelled: false });
         }
         events.push(...newEvents);
         saveEvents(events);
@@ -1544,7 +1758,7 @@
       } else {
         if (restored) { setUser(restored); closeAuth(); } else { openAuth(); }
       }
-      Promise.resolve(loadEvents()).then((e) => { events = e; renderEventsList(); renderTimetable(); populateNoteClassOptions(); });
+      Promise.resolve(loadEvents()).then((e) => { events = e; renderEventsList(); renderTimetable(); populateNoteClassOptions(); updateNowAndNextUI(); });
       // Ensure notes load at boot even before auth events settle (local demo mode)
       Promise.resolve(loadNotes()).then((n) => { notesGlobal = n; renderNotesListGlobal(); });
 
@@ -1554,6 +1768,13 @@
       openAddModalBtn.addEventListener('click', openModal);
       closeModalBtn.addEventListener('click', closeModal);
       modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+      // Boot new features
+      applyCompactMode();
+      initWeekControls();
+      updateWeekLabel();
+      updateNowAndNextUI();
+      setInterval(updateNowAndNextUI, 30000);
     </script>
   </body>
 </html>
