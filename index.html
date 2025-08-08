@@ -225,6 +225,10 @@
 
     <div class="container">
       <div class="panel">
+        <div id="accountBar" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--border);">
+          <span id="accountLabel" style="color:var(--muted); font-size:12px;">Not signed in</span>
+          <button id="logoutBtn" class="btn secondary" style="display:none;">Logout</button>
+        </div>
         <div class="tabs">
           <button class="tab-btn active" data-tab="tab-timetable">Timetable</button>
           <button class="tab-btn" data-tab="tab-classes">Classes</button>
@@ -322,9 +326,48 @@
       </div>
     </div>
 
+    <!-- Auth Modal -->
+    <div id="authModal" class="modal-backdrop open" aria-hidden="false">
+      <div class="modal-card" style="max-width: 480px; width: 92vw;">
+        <div class="modal-header"><strong>Sign in</strong></div>
+        <div class="modal-body">
+          <div class="row" style="flex-direction:column; align-items:stretch; gap:8px;">
+            <input id="authName" type="text" placeholder="Your name (optional)" style="display:none; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;" />
+            <input id="authEmail" type="email" placeholder="Email" style="background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;" />
+            <input id="authPassword" type="password" placeholder="Password" style="background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;" />
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button id="authSubmit" class="btn" style="flex:1;">Sign in</button>
+              <button id="authToggle" class="btn secondary" style="flex:1;">Create account</button>
+            </div>
+            <div style="color:var(--muted); font-size:12px;">
+              Demo only: credentials are stored locally in your browser. For real accounts, integrate Supabase or Firebase.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Firebase (fill your config below) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore-compat.js"></script>
+
     <script>
+      // 1) Firebase config (from your message)
+      // If you need to revert to local demo storage, set FIREBASE_CONFIG to null
+      window.FIREBASE_CONFIG = {
+        apiKey: "AIzaSyAsgMCTtlLNLYVAp4GvdlR0nqcrjTZHEY8",
+        authDomain: "timetable-e3cf3.firebaseapp.com",
+        projectId: "timetable-e3cf3",
+        storageBucket: "timetable-e3cf3.firebasestorage.app",
+        messagingSenderId: "465206434019",
+        appId: "1:465206434019:web:1f4cdeee0bcb72303c4dd6",
+        measurementId: "G-XR9CC9X9WL"
+      };
       const DAYS_ALL = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
       const STORAGE_KEYS = { settings: "tt_settings", events: "tt_events" };
+      const AUTH_KEYS = { user: 'tt_user', users: 'tt_users' }; // demo local auth
+      let fb = { app: null, auth: null, db: null };
 
       function timeToMinutes(hhmm) {
         const [h, m] = hhmm.split(":").map(Number);
@@ -356,19 +399,52 @@
       function saveSettings(s) {
         localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(s));
       }
-      function loadEvents() {
-        const saved = localStorage.getItem(STORAGE_KEYS.events);
-        if (saved) {
-          try { return JSON.parse(saved); } catch {}
+      async function loadEvents() {
+        if (fb.db && currentUser?.uid) {
+          const snap = await fb.db.collection('events').where('uid','==',currentUser.uid).get();
+          const arr = [];
+          snap.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
+          // Map firestore docs to our shape
+          return arr.map(e => ({
+            id: e.id,
+            name: e.name,
+            day: e.day,
+            start: e.start,
+            end: e.end,
+            color: e.color,
+            teacher: e.teacher || '',
+            location: e.location || '',
+            mode: e.mode || 'Lecture',
+            notes: e.notes || ''
+          }));
         }
+        const key = STORAGE_KEYS.events + (currentUser?.email ? ':' + currentUser.email : '');
+        const saved = localStorage.getItem(key);
+        if (saved) { try { return JSON.parse(saved); } catch {} }
         return [];
       }
-      function saveEvents(list) {
-        localStorage.setItem(STORAGE_KEYS.events, JSON.stringify(list));
+      async function saveEvents(list) {
+        if (fb.db && currentUser?.uid) {
+          // naive sync: clear and re-add (simple for demo). For prod, do granular updates
+          const batch = fb.db.batch();
+          const ref = fb.db.collection('events');
+          // delete existing for uid
+          const exist = await fb.db.collection('events').where('uid','==',currentUser.uid).get();
+          exist.forEach(d => batch.delete(d.ref));
+          list.forEach(ev => {
+            const docRef = ref.doc();
+            batch.set(docRef, { uid: currentUser.uid, ...ev });
+          });
+          await batch.commit();
+          return;
+        }
+        const key = STORAGE_KEYS.events + (currentUser?.email ? ':' + currentUser.email : '');
+        localStorage.setItem(key, JSON.stringify(list));
       }
 
       let settings = loadSettings();
-      let events = loadEvents();
+      let events = [];
+      let currentUser = null;
 
       // UI Elements
       const startTimeEl = document.getElementById("startTime");
@@ -392,6 +468,93 @@
       const viewModal = document.getElementById('viewModal');
       const closeViewModalBtn = document.getElementById('closeViewModal');
       const viewModalBody = document.getElementById('viewModalBody');
+      const authModal = document.getElementById('authModal');
+      const authEmail = document.getElementById('authEmail');
+      const authPassword = document.getElementById('authPassword');
+      const authSubmit = document.getElementById('authSubmit');
+      const authToggle = document.getElementById('authToggle');
+      const authName = document.getElementById('authName');
+      const accountLabel = document.getElementById('accountLabel');
+      const logoutBtn = document.getElementById('logoutBtn');
+      // Firebase setup (if config present)
+      (function initFirebase(){
+        if (!window.FIREBASE_CONFIG) return;
+        try {
+          fb.app = firebase.initializeApp(window.FIREBASE_CONFIG);
+          fb.auth = firebase.auth();
+          fb.db = firebase.firestore();
+          console.log('Firebase initialized');
+        } catch (e) { console.warn('Firebase init failed or already initialized', e); }
+      })();
+
+      // Demo auth (localStorage) fallback. If Firebase enabled, use Firebase Auth
+      function setUser(user) {
+        currentUser = user;
+        if (user) {
+          accountLabel.textContent = `Signed in as ${user.email}`;
+          logoutBtn.style.display = '';
+          // Load user-specific data (keyed by uid/email)
+          Promise.resolve(loadEvents()).then((e) => { events = e; renderEventsList(); renderTimetable(); });
+        } else {
+          accountLabel.textContent = 'Not signed in';
+          logoutBtn.style.display = 'none';
+        }
+      }
+      function getUsers() {
+        try { return JSON.parse(localStorage.getItem(AUTH_KEYS.users) || '{}'); } catch { return {}; }
+      }
+      function saveUsers(users) { localStorage.setItem(AUTH_KEYS.users, JSON.stringify(users)); }
+      function persistUser(u) { localStorage.setItem(AUTH_KEYS.user, JSON.stringify(u)); }
+      function restoreUser() { const raw = localStorage.getItem(AUTH_KEYS.user); if (!raw) return null; try { return JSON.parse(raw); } catch { return null; } }
+      function openAuth() { authModal.classList.add('open'); }
+      function closeAuth() { authModal.classList.remove('open'); }
+      function switchAuthMode(isSignup) {
+        authName.style.display = isSignup ? '' : 'none';
+        authSubmit.textContent = isSignup ? 'Create account' : 'Sign in';
+        authToggle.textContent = isSignup ? 'I have an account' : 'Create account';
+        authSubmit.dataset.mode = isSignup ? 'signup' : 'login';
+      }
+      logoutBtn.addEventListener('click', async () => {
+        if (fb.auth) { try { await fb.auth.signOut(); } catch(e){} }
+        setUser(null); localStorage.removeItem(AUTH_KEYS.user); openAuth();
+      });
+      authToggle.addEventListener('click', () => { switchAuthMode(authSubmit.dataset.mode !== 'signup'); });
+      authSubmit.addEventListener('click', async () => {
+        const email = (authEmail.value || '').trim().toLowerCase();
+        const password = authPassword.value || '';
+        if (!email || !password) { alert('Enter email and password'); return; }
+        if (fb.auth) {
+          try {
+            let cred = null;
+            if (authSubmit.dataset.mode === 'signup') {
+              cred = await fb.auth.createUserWithEmailAndPassword(email, password);
+              // optional displayName
+              if (authName.value) await cred.user.updateProfile({ displayName: authName.value });
+            } else {
+              cred = await fb.auth.signInWithEmailAndPassword(email, password);
+            }
+            const u = { email: cred.user.email, uid: cred.user.uid, name: cred.user.displayName || '' };
+            persistUser(u); setUser(u); closeAuth();
+          } catch (e) {
+            alert(e.message || 'Authentication failed');
+          }
+          return;
+        }
+        // local demo fallback
+        const users = getUsers();
+        if (authSubmit.dataset.mode === 'signup') {
+          if (users[email]) { alert('Account already exists'); return; }
+          users[email] = { email, password, name: authName.value || '' };
+          saveUsers(users);
+          persistUser(users[email]);
+          setUser(users[email]);
+          closeAuth();
+        } else {
+          const u = users[email];
+          if (!u || u.password !== password) { alert('Invalid credentials'); return; }
+          persistUser(u); setUser(u); closeAuth();
+        }
+      });
 
       // Initialize controls with saved settings
       startTimeEl.value = settings.start;
@@ -769,8 +932,16 @@
       // Initial render
       renderDaysChooser();
       renderSlots();
-      renderEventsList();
-      renderTimetable();
+      const restored = restoreUser();
+      if (fb.auth) {
+        fb.auth.onAuthStateChanged((u) => {
+          if (u) { const su = { email: u.email, uid: u.uid, name: u.displayName || '' }; persistUser(su); setUser(su); closeAuth(); }
+          else { setUser(null); openAuth(); }
+        });
+      } else {
+        if (restored) { setUser(restored); closeAuth(); } else { openAuth(); }
+      }
+      Promise.resolve(loadEvents()).then((e) => { events = e; renderEventsList(); renderTimetable(); });
 
       // Modal behavior
       function openModal() { modal.classList.add('open'); }
