@@ -679,24 +679,23 @@
         localStorage.setItem(key, JSON.stringify(list));
       }
        async function saveNotes(list) {
-         if (fb.db && currentUser?.uid) {
-           // Incremental upsert instead of destructive rewrite to avoid accidental loss
-           const ref = fb.db.collection('notes');
-           const existing = new Map();
-           const snap = await fb.db.collection('notes').where('uid','==',currentUser.uid).get();
-           snap.forEach(d => existing.set(d.id, d.ref));
-           // Upsert
-           for (const n of list) {
-             const docRef = ref.doc(n.id);
-             await docRef.set({ uid: currentUser.uid, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||Date.now() }, { merge: true });
-             existing.delete(n.id);
+         try {
+           if (fb.db && currentUser?.uid) {
+             // Incremental upsert (no deletions) to avoid accidental loss
+             const ref = fb.db.collection('notes');
+             for (const n of list) {
+               const docRef = ref.doc(n.id);
+               await docRef.set({ uid: currentUser.uid, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||Date.now() }, { merge: true });
+             }
+             return true;
            }
-           // Optionally delete docs that are not in the list anymore
-           for (const [,refToDelete] of existing) { await refToDelete.delete(); }
-           return;
+         } catch (err) {
+           console.warn('Failed to save notes to Firestore, falling back to local storage', err);
+           try { alert('Could not sync notes to cloud. They are saved locally for now.'); } catch {}
          }
          const key = STORAGE_KEYS.notes + (currentUser?.email ? ':' + currentUser.email : '');
          localStorage.setItem(key, JSON.stringify(list));
+         return false;
        }
 
       let settings = loadSettings();
@@ -830,7 +829,43 @@
           logoutBtn.style.display = '';
           // Load user-specific data (keyed by uid/email)
        Promise.resolve(loadEvents()).then((e) => { events = e; renderEventsList(); renderTimetable(); });
-       Promise.resolve(loadNotes()).then((n) => { notesGlobal = n; renderNotesListGlobal(); if (notesGlobal.length) { openNote(notesGlobal[0].id); } else { clearNoteEditor(); } });
+       Promise.resolve(loadNotes()).then(async (n) => {
+         notesGlobal = n;
+         // One-time migration: merge any local notes for this email into Firestore
+         try {
+           if (fb.db && currentUser?.uid) {
+             const localKey = STORAGE_KEYS.notes + ':' + currentUser.email;
+             const raw = localStorage.getItem(localKey);
+             if (raw) {
+               try {
+                 const localArr = JSON.parse(raw) || [];
+                 if (Array.isArray(localArr) && localArr.length) {
+                   // Merge unique by id; create IDs if missing
+                   const existingById = new Map(notesGlobal.map(x => [x.id, x]));
+                   localArr.forEach(x => {
+                     const id = x.id || (x.id = crypto.randomUUID());
+                     const merged = {
+                       id,
+                       title: x.title || 'Untitled',
+                       content: x.content || '',
+                       className: x.className || '',
+                       updatedAt: x.updatedAt || Date.now(),
+                     };
+                     existingById.set(id, merged);
+                   });
+                   notesGlobal = Array.from(existingById.values());
+                   await saveNotes(notesGlobal);
+                   localStorage.removeItem(localKey);
+                 }
+               } catch {}
+             }
+             // Reload from cloud after potential migration
+             try { notesGlobal = await loadNotes(); } catch {}
+           }
+         } catch(e) { console.warn('Notes migration check failed', e); }
+         renderNotesListGlobal();
+         if (notesGlobal.length) { openNote(notesGlobal[0].id); } else { clearNoteEditor(); }
+       });
         } else {
           accountLabel.textContent = 'Not signed in';
           logoutBtn.style.display = 'none';
@@ -1157,7 +1192,7 @@
       }
 
       // ---------- Notes (global) ----------
-       function renderNotesListGlobal() {
+      function renderNotesListGlobal() {
         notesListGlobalEl.innerHTML = '';
         if (!notesGlobal.length) {
           const empty = document.createElement('div');
@@ -1190,7 +1225,7 @@
             // create one consolidated note
             const id = crypto.randomUUID();
             const content = extracted.join('\n\n');
-            notesGlobal.push({ id, title: 'Imported from classes', content, updatedAt: Date.now() });
+            notesGlobal = [{ id, title: 'Imported from classes', content, className: '', updatedAt: Date.now() }, ...notesGlobal];
             saveNotes(notesGlobal);
             renderNotesListGlobal();
             openNote(id);
@@ -1199,7 +1234,7 @@
           notesListGlobalEl.appendChild(importWrap);
           return;
         }
-        // Optionally filter by selected class when a filter is active later
+        // Ensure stable sort by updatedAt desc
         notesGlobal
           .slice()
           .sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0))
@@ -1237,7 +1272,7 @@
         const id = crypto.randomUUID();
         const now = Date.now();
         const n = { id, title: 'Untitled', content: '', className: noteClassEl ? noteClassEl.value : '', updatedAt: now };
-        notesGlobal.unshift(n);
+        notesGlobal = [n, ...notesGlobal];
         renderNotesListGlobal();
         openNote(id);
       });
@@ -1259,9 +1294,9 @@
         const i = notesGlobal.findIndex(n => n.id === activeNoteId);
         if (i === -1) return;
         notesGlobal[i] = { ...notesGlobal[i], title: noteTitleEl.value.trim() || 'Untitled', content: noteContentEl.value, className: noteClassEl ? noteClassEl.value : '', updatedAt: Date.now() };
-        await saveNotes(notesGlobal);
-        // Ensure latest list is pulled from Firestore after write
-        try { notesGlobal = await loadNotes(); } catch {}
+        const savedToCloud = await saveNotes(notesGlobal);
+        // Ensure latest list is pulled from Firestore after write if available
+        try { if (savedToCloud) notesGlobal = await loadNotes(); } catch {}
         renderNotesListGlobal();
       });
       deleteGlobalNoteBtn.addEventListener('click', async () => {
@@ -1513,6 +1548,8 @@
         if (restored) { setUser(restored); closeAuth(); } else { openAuth(); }
       }
       Promise.resolve(loadEvents()).then((e) => { events = e; renderEventsList(); renderTimetable(); populateNoteClassOptions(); });
+      // Ensure notes load at boot even before auth events settle (local demo mode)
+      Promise.resolve(loadNotes()).then((n) => { notesGlobal = n; renderNotesListGlobal(); });
 
       // Modal behavior
       function openModal() { modal.classList.add('open'); }
