@@ -165,6 +165,20 @@
       .slot-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
       .slot-actions button { margin-left: 6px; }
       .slot-notes { color:#bcd0ff; font-size:12px; margin-top:6px; white-space:pre-wrap; }
+      /* Auth improvements */
+      .auth-card { max-width: 520px; width: 92vw; }
+      .auth-tabs { display:flex; gap:4px; margin-bottom:10px; }
+      .auth-tab { flex:1; padding:10px 12px; border:1px solid var(--border); background:#0b1220; color:var(--muted); border-radius:8px; cursor:pointer; text-align:center; }
+      .auth-tab.active { background:#152238; color:#e2f3ff; border-color:#37517e; }
+      .auth-error { color:#ffb4b4; background:#3b1f1f; border:1px solid #6b2a2a; padding:8px; border-radius:8px; display:none; }
+      .auth-actions { display:flex; gap:8px; align-items:center; }
+      .auth-foot { color:var(--muted); font-size:12px; margin-top:6px; }
+      .field-row { display:flex; gap:8px; align-items:center; }
+      .field-row label { color:var(--muted); font-size:12px; }
+      @media (max-width: 600px) {
+        .modal-backdrop.open { align-items: flex-end; }
+        .modal-card { width: 100%; border-radius: 12px 12px 0 0; }
+      }
 
       /* Timetable (horizontal time, days on left) */
       .timetable.panel { padding: 8px; overflow: auto; z-index: 0; position: relative; }
@@ -328,19 +342,33 @@
 
     <!-- Auth Modal -->
     <div id="authModal" class="modal-backdrop open" aria-hidden="false">
-      <div class="modal-card" style="max-width: 480px; width: 92vw;">
-        <div class="modal-header"><strong>Sign in</strong></div>
+      <div class="modal-card auth-card">
+        <div class="modal-header"><strong id="authTitle">Welcome</strong></div>
         <div class="modal-body">
+          <div class="auth-tabs">
+            <div id="tabSignIn" class="auth-tab active">Sign in</div>
+            <div id="tabSignUp" class="auth-tab">Create account</div>
+          </div>
+          <div id="authError" class="auth-error"></div>
           <div class="row" style="flex-direction:column; align-items:stretch; gap:8px;">
-            <input id="authName" type="text" placeholder="Your name (optional)" style="display:none; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;" />
-            <input id="authEmail" type="email" placeholder="Email" style="background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;" />
-            <input id="authPassword" type="password" placeholder="Password" style="background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;" />
-            <div style="display:flex; gap:8px; align-items:center;">
-              <button id="authSubmit" class="btn" style="flex:1;">Sign in</button>
-              <button id="authToggle" class="btn secondary" style="flex:1;">Create account</button>
+            <div id="nameRow" class="field-row" style="display:none;">
+              <label style="min-width:80px;">Name</label>
+              <input id="authName" type="text" placeholder="Your name" style="flex:1; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;" />
             </div>
-            <div style="color:var(--muted); font-size:12px;">
-              Demo only: credentials are stored locally in your browser. For real accounts, integrate Supabase or Firebase.
+            <div class="field-row">
+              <label style="min-width:80px;">Email</label>
+              <input id="authEmail" type="email" placeholder="you@example.com" style="flex:1; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;" />
+            </div>
+            <div class="field-row">
+              <label style="min-width:80px;">Password</label>
+              <input id="authPassword" type="password" placeholder="••••••••" style="flex:1; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;" />
+            </div>
+            <div class="auth-actions">
+              <button id="authSubmit" class="btn" style="flex:1;">Continue</button>
+              <button id="authCancel" class="btn secondary" style="flex:1;">Cancel</button>
+            </div>
+            <div class="auth-foot">
+              Tip: your data syncs to your account (phone and desktop) when signed in.
             </div>
           </div>
         </div>
@@ -472,8 +500,13 @@
       const authEmail = document.getElementById('authEmail');
       const authPassword = document.getElementById('authPassword');
       const authSubmit = document.getElementById('authSubmit');
-      const authToggle = document.getElementById('authToggle');
+      const authCancel = document.getElementById('authCancel');
       const authName = document.getElementById('authName');
+      const nameRow = document.getElementById('nameRow');
+      const authError = document.getElementById('authError');
+      const tabSignIn = document.getElementById('tabSignIn');
+      const tabSignUp = document.getElementById('tabSignUp');
+      const authTitle = document.getElementById('authTitle');
       const accountLabel = document.getElementById('accountLabel');
       const logoutBtn = document.getElementById('logoutBtn');
       // Firebase setup (if config present)
@@ -509,16 +542,22 @@
       function openAuth() { authModal.classList.add('open'); }
       function closeAuth() { authModal.classList.remove('open'); }
       function switchAuthMode(isSignup) {
-        authName.style.display = isSignup ? '' : 'none';
+        nameRow.style.display = isSignup ? '' : 'none';
         authSubmit.textContent = isSignup ? 'Create account' : 'Sign in';
-        authToggle.textContent = isSignup ? 'I have an account' : 'Create account';
         authSubmit.dataset.mode = isSignup ? 'signup' : 'login';
+        authTitle.textContent = isSignup ? 'Create your account' : 'Welcome back';
+        tabSignIn.classList.toggle('active', !isSignup);
+        tabSignUp.classList.toggle('active', isSignup);
+        authError.style.display = 'none';
+        authError.textContent = '';
       }
       logoutBtn.addEventListener('click', async () => {
         if (fb.auth) { try { await fb.auth.signOut(); } catch(e){} }
         setUser(null); localStorage.removeItem(AUTH_KEYS.user); openAuth();
       });
-      authToggle.addEventListener('click', () => { switchAuthMode(authSubmit.dataset.mode !== 'signup'); });
+      tabSignIn.addEventListener('click', () => switchAuthMode(false));
+      tabSignUp.addEventListener('click', () => switchAuthMode(true));
+      authCancel.addEventListener('click', () => { authEmail.value=''; authPassword.value=''; closeAuth(); });
       authSubmit.addEventListener('click', async () => {
         const email = (authEmail.value || '').trim().toLowerCase();
         const password = authPassword.value || '';
@@ -536,7 +575,8 @@
             const u = { email: cred.user.email, uid: cred.user.uid, name: cred.user.displayName || '' };
             persistUser(u); setUser(u); closeAuth();
           } catch (e) {
-            alert(e.message || 'Authentication failed');
+            authError.textContent = e.message || 'Authentication failed';
+            authError.style.display = '';
           }
           return;
         }
