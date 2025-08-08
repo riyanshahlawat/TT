@@ -171,6 +171,11 @@
       .slot-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
       .slot-actions button { margin-left: 6px; }
       .slot-notes { color:#bcd0ff; font-size:12px; margin-top:6px; white-space:pre-wrap; }
+      .notes-list { display:flex; flex-direction:column; gap:8px; }
+      .note-item { display:flex; align-items:flex-start; gap:8px; padding:8px; border:1px solid var(--border); border-radius:8px; background:#0b1220; }
+      .note-text { flex:1; white-space:pre-wrap; color:#dbe7ff; font-size:13px; }
+      .note-del { background:#0b1220; color:var(--muted); border:1px solid var(--border); border-radius:8px; padding:6px 8px; cursor:pointer; }
+      .note-del:hover { color:#e2f3ff; border-color:#37517e; }
       /* Auth improvements */
       .auth-card { max-width: 520px; width: 92vw; }
       .auth-tabs { display:flex; gap:4px; margin-bottom:10px; }
@@ -184,9 +189,18 @@
       .icon-btn { width: 36px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
       .icon-btn:hover { color: #e2f3ff; border-color: #37517e; background: #0b1220; }
       .icon-btn svg { width: 18px; height: 18px; display: block; }
+       /* Notes pane */
+       .notes-pane.panel { padding: 8px; display: none; }
+       .notes-editor { display: flex; flex-direction: column; gap: 12px; height: calc(100vh - 160px); }
+       .doc { background: rgba(11,18,32,0.9); border: 1px solid var(--border); border-radius: 12px; padding: 12px; overflow: auto; }
+       .doc input.note-title { width: 100%; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px; font-size:16px; margin-bottom:8px; }
+       .doc textarea#noteContent { width: 100%; height: calc(100% - 56px); background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px; resize: none; }
+       .note-list-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px; border:1px solid var(--border); border-radius:8px; background:#0b1220; margin-bottom:8px; }
+       .note-title-mini { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       @media (max-width: 600px) {
         .modal-backdrop.open { align-items: flex-end; }
         .modal-card { width: 100%; border-radius: 12px 12px 0 0; }
+          .notes-editor { height: auto; }
       }
 
       /* Timetable (horizontal time, days on left) */
@@ -319,6 +333,15 @@
       }
 
       .tt-scroll { touch-action: pan-x; }
+ 
+       /* Right-side details drawer */
+       .drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 55; display: none; }
+       .drawer-backdrop.open { display: block; }
+       .side-drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(720px, 50vw); background: var(--panel); border-left: 1px solid var(--border); box-shadow: -16px 0 40px rgba(0,0,0,0.35); transform: translateX(100%); transition: transform 220ms ease; z-index: 60; display: flex; flex-direction: column; }
+       .side-drawer.open { transform: translateX(0); }
+       .drawer-header { display:flex; align-items:center; justify-content:space-between; padding: 14px; border-bottom:1px solid var(--border); }
+       .drawer-body { padding: 12px 14px 14px 14px; overflow: auto; flex: 1; }
+       @media (max-width: 600px) { .side-drawer { width: 100%; } }
     </style>
   </head>
   <body>
@@ -333,10 +356,11 @@
           <span id="accountLabel" style="color:var(--muted); font-size:12px;">Not signed in</span>
           <button id="logoutBtn" class="btn secondary" style="display:none;">Logout</button>
         </div>
-        <div class="tabs">
-          <button class="tab-btn active" data-tab="tab-timetable">Timetable</button>
-          <button class="tab-btn" data-tab="tab-classes">Classes</button>
-        </div>
+         <div class="tabs">
+           <button class="tab-btn active" data-tab="tab-timetable">Timetable</button>
+           <button class="tab-btn" data-tab="tab-classes">Classes</button>
+           <button class="tab-btn" data-tab="tab-notes">Notes</button>
+         </div>
 
         <div id="tab-timetable" class="tab-content active">
           <div class="controls">
@@ -369,12 +393,29 @@
           </div>
         </div>
 
+        <div id="tab-notes" class="tab-content">
+          <div class="controls">
+            <div class="row" style="justify-content:space-between; align-items:center;">
+              <h3 style="margin:0;">Notes</h3>
+              <button id="addGlobalNote" class="btn secondary" title="New note" style="display:inline-flex; align-items:center; gap:8px;">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                  <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                New Note
+              </button>
+            </div>
+            <div class="events-list" style="padding-left:0; padding-right:0; max-height: 38vh; overflow:auto;">
+              <div id="notesListGlobal"></div>
+            </div>
+          </div>
+        </div>
+
         <div class="footer">
           Tip: Add the same class multiple times on the same day. Adjacent or overlapping times auto-merge into a single block.
         </div>
       </div>
 
-      <div class="timetable panel">
+       <div class="timetable panel" id="ttPanel">
         <div class="tt-scroll">
           <div class="legend-top">
             <div class="corner"></div>
@@ -383,6 +424,30 @@
           <div class="rows" id="rows"></div>
         </div>
       </div>
+ 
+       <div class="notes-pane panel" id="notesPanel">
+         <div class="controls">
+           <div class="row" style="align-items:flex-start; gap:12px;">
+             <div style="flex:1; min-width:100%;">
+               <div class="notes-editor" style="max-width: 980px; margin: 0 auto;">
+                 <div class="doc">
+                   <div class="row" style="gap:8px; align-items:center;">
+                     <input id="noteTitle" class="note-title" placeholder="Title" />
+                     <select id="noteClass" title="Related class" style="min-width:160px;">
+                       <option value="">No class</option>
+                     </select>
+                   </div>
+                   <textarea id="noteContent" placeholder="Write your note..." style="min-height: 220px;"></textarea>
+                 </div>
+               </div>
+               <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px;">
+                 <button id="deleteGlobalNote" class="btn secondary">Delete</button>
+                 <button id="saveGlobalNote" class="btn">Save</button>
+               </div>
+             </div>
+           </div>
+         </div>
+       </div>
     </div>
 
     <!-- Add Class Modal -->
@@ -419,16 +484,46 @@
       </div>
     </div>
 
-    <!-- View Class Modal -->
-    <div id="viewModal" class="modal-backdrop" aria-hidden="true">
-      <div class="modal-card">
-        <div class="modal-header">
-          <strong>Class Details</strong>
-          <button id="closeViewModal" class="btn secondary">Close</button>
-        </div>
-        <div id="viewModalBody" class="modal-body"></div>
+    <!-- Right-side Editor Drawer -->
+    <div id="drawerBackdrop" class="drawer-backdrop" aria-hidden="true"></div>
+    <aside id="editorDrawer" class="side-drawer" aria-hidden="true">
+      <div class="drawer-header">
+        <strong>Edit Class</strong>
+        <button id="closeDrawer" class="btn secondary">Close</button>
       </div>
-    </div>
+      <div class="drawer-body">
+        <div class="row">
+          <input id="editName" type="text" placeholder="Class name" style="flex:2; min-width:160px;" />
+          <input id="editTeacher" type="text" placeholder="Teacher" style="flex:1; min-width:140px;" />
+          <input id="editLocation" type="text" placeholder="Location" style="flex:1; min-width:140px;" />
+        </div>
+        <div class="row" style="gap:8px;">
+          <label>Color</label>
+          <input id="editColor" type="color" />
+        </div>
+        <div class="row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <label>Time slots</label>
+            <button id="addEditSlot" type="button" class="btn secondary">+ Add time slot</button>
+          </div>
+          <div id="editTimeSlots" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+        <div class="row" style="flex-direction:column; align-items:stretch; gap:8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <label>Class notes</label>
+            <div>
+              <button id="addNote" class="btn secondary">+ Add note</button>
+            </div>
+          </div>
+          <div id="notesList" class="notes-list"></div>
+          <div id="linkedNotes" class="notes-list" style="margin-top:6px;"></div>
+        </div>
+        <div class="row" style="justify-content:flex-end; gap:8px;">
+          <button id="deleteOne" class="btn secondary">Delete</button>
+          <button id="saveOne" class="btn">Save changes</button>
+        </div>
+      </div>
+    </aside>
 
     <!-- Auth Modal -->
     <div id="authModal" class="modal-backdrop open" aria-hidden="false">
@@ -484,7 +579,7 @@
         measurementId: "G-XR9CC9X9WL"
       };
       const DAYS_ALL = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      const STORAGE_KEYS = { settings: "tt_settings", events: "tt_events" };
+       const STORAGE_KEYS = { settings: "tt_settings", events: "tt_events", notes: "tt_notes" };
       const AUTH_KEYS = { user: 'tt_user', users: 'tt_users' }; // demo local auth
       let fb = { app: null, auth: null, db: null };
 
@@ -525,7 +620,7 @@
       function saveSettings(s) {
         localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(s));
       }
-      async function loadEvents() {
+       async function loadEvents() {
         if (fb.db && currentUser?.uid) {
           const snap = await fb.db.collection('events').where('uid','==',currentUser.uid).get();
           const arr = [];
@@ -549,7 +644,15 @@
         if (saved) { try { return JSON.parse(saved); } catch {} }
         return [];
       }
-      async function saveEvents(list) {
+       async function loadNotes() {
+         if (fb.db && currentUser?.uid) {
+           const snap = await fb.db.collection('notes').where('uid','==',currentUser.uid).orderBy('updatedAt','desc').get();
+           const arr = []; snap.forEach(doc => arr.push({ id: doc.id, ...doc.data() })); return arr.map(n=>({ id: n.id, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||Date.now() }));
+         }
+         const key = STORAGE_KEYS.notes + (currentUser?.email ? ':' + currentUser.email : '');
+         try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+       }
+       async function saveEvents(list) {
         if (fb.db && currentUser?.uid) {
           // naive sync: clear and re-add (simple for demo). For prod, do granular updates
           const batch = fb.db.batch();
@@ -567,9 +670,23 @@
         const key = STORAGE_KEYS.events + (currentUser?.email ? ':' + currentUser.email : '');
         localStorage.setItem(key, JSON.stringify(list));
       }
+       async function saveNotes(list) {
+         if (fb.db && currentUser?.uid) {
+           const batch = fb.db.batch();
+           const ref = fb.db.collection('notes');
+           const exist = await fb.db.collection('notes').where('uid','==',currentUser.uid).get();
+           exist.forEach(d => batch.delete(d.ref));
+           list.forEach(n => { const docRef = ref.doc(n.id); batch.set(docRef, { uid: currentUser.uid, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||Date.now() }); });
+           await batch.commit(); return;
+         }
+         const key = STORAGE_KEYS.notes + (currentUser?.email ? ':' + currentUser.email : '');
+         localStorage.setItem(key, JSON.stringify(list));
+       }
 
       let settings = loadSettings();
-      let events = [];
+       let events = [];
+       let notesGlobal = [];
+       let activeNoteId = null;
       let currentUser = null;
 
       // UI Elements
@@ -586,14 +703,29 @@
       const eventsContainer = document.getElementById("eventsContainer");
       const legendTimesEl = document.getElementById("legendTimes");
       const rowsEl = document.getElementById("rows");
+      const ttPanel = document.getElementById('ttPanel');
+      const notesPanel = document.getElementById('notesPanel');
       const tabButtons = document.querySelectorAll('.tab-btn');
       const ttScroll = document.querySelector('.tt-scroll');
       const openAddModalBtn = document.getElementById('openAddModal');
       const modal = document.getElementById('modal');
       const closeModalBtn = document.getElementById('closeModal');
-      const viewModal = document.getElementById('viewModal');
-      const closeViewModalBtn = document.getElementById('closeViewModal');
-      const viewModalBody = document.getElementById('viewModalBody');
+      // Drawer elements
+      const drawer = document.getElementById('editorDrawer');
+      const drawerBackdrop = document.getElementById('drawerBackdrop');
+      const closeDrawerBtn = document.getElementById('closeDrawer');
+      const editName = document.getElementById('editName');
+      const editTeacher = document.getElementById('editTeacher');
+      const editLocation = document.getElementById('editLocation');
+      const editColor = document.getElementById('editColor');
+      const editTimeSlotsEl = document.getElementById('editTimeSlots');
+      const addEditSlotBtn = document.getElementById('addEditSlot');
+      const notesListEl = document.getElementById('notesList');
+      const linkedNotesEl = document.getElementById('linkedNotes');
+      const addNoteBtn = document.getElementById('addNote');
+      const saveOneBtn = document.getElementById('saveOne');
+      const deleteOneBtn = document.getElementById('deleteOne');
+      let editingIndex = null; // index in events array
       const authModal = document.getElementById('authModal');
       const authEmail = document.getElementById('authEmail');
       const authPassword = document.getElementById('authPassword');
@@ -608,6 +740,15 @@
       const accountLabel = document.getElementById('accountLabel');
       const logoutBtn = document.getElementById('logoutBtn');
       const togglePasswordBtn = document.getElementById('togglePassword');
+      // Global notes elements
+      const addGlobalNoteBtn = document.getElementById('addGlobalNote');
+      const notesListGlobalEl = document.getElementById('notesListGlobal');
+      const noteTitleEl = document.getElementById('noteTitle');
+      const noteContentEl = document.getElementById('noteContent');
+      const notePreviewEl = null;
+      const noteClassEl = document.getElementById('noteClass');
+      const saveGlobalNoteBtn = document.getElementById('saveGlobalNote');
+      const deleteGlobalNoteBtn = document.getElementById('deleteGlobalNote');
       let isPasswordVisible = false;
       function renderPasswordToggle() {
         togglePasswordBtn.innerHTML = isPasswordVisible
@@ -672,11 +813,14 @@
           accountLabel.textContent = `Signed in as ${user.email}`;
           logoutBtn.style.display = '';
           // Load user-specific data (keyed by uid/email)
-          Promise.resolve(loadEvents()).then((e) => { events = e; renderEventsList(); renderTimetable(); });
+       Promise.resolve(loadEvents()).then((e) => { events = e; renderEventsList(); renderTimetable(); });
+       Promise.resolve(loadNotes()).then((n) => { notesGlobal = n; renderNotesListGlobal(); if (notesGlobal.length) { openNote(notesGlobal[0].id); } else { clearNoteEditor(); } });
         } else {
           accountLabel.textContent = 'Not signed in';
           logoutBtn.style.display = 'none';
         }
+        // Populate class selector for notes whenever user context changes
+        populateNoteClassOptions();
       }
       function getUsers() {
         try { return JSON.parse(localStorage.getItem(AUTH_KEYS.users) || '{}'); } catch { return {}; }
@@ -983,11 +1127,12 @@
           block.title = `${e.name} — ${e.day} ${e.start}–${e.end}`;
           const s12 = minutesToTime(s);
           const t12 = minutesToTime(t);
-          const metaPieces = [];
-          if (e.mode) metaPieces.push(e.mode);
-          if (e.location) metaPieces.push(e.location);
-          if (e.teacher) metaPieces.push(e.teacher);
-          if (e.notes) metaPieces.push('📝');
+           const metaPieces = [];
+           if (e.mode) metaPieces.push(e.mode);
+           if (e.location) metaPieces.push(e.location);
+           if (e.teacher) metaPieces.push(e.teacher);
+           try { const arr = JSON.parse(e.notes||'[]'); if (Array.isArray(arr) && arr.length) metaPieces.push('📝'+arr.length); }
+           catch { if (e.notes) metaPieces.push('📝'); }
           const metaText = metaPieces.join(' • ');
           block.innerHTML = `${e.name}${metaText ? `<span class=\"subtitle\">${metaText}</span>` : ''}<span class=\"subtitle\">${s12}–${t12}</span>`;
           block.addEventListener('click', () => openClassDetailsByName(e.name));
@@ -995,84 +1140,271 @@
         }
       }
 
-      function openClassDetailsByName(targetName) {
-        if (!targetName) return;
-        const normalized = (targetName || '').trim().toLowerCase();
-        const group = { name: targetName, slots: [] };
-        events.forEach((ev, idx) => {
-          if ((ev.name || '').trim().toLowerCase() === normalized) {
-            group.slots.push({ idx, ev });
-          }
-        });
-        if (group.slots.length === 0) return;
-        // Build content
-        viewModalBody.innerHTML = '';
-        const title = document.createElement('div');
-        title.style.marginBottom = '8px';
-        title.style.fontWeight = '700';
-        title.style.fontSize = '16px';
-        title.textContent = group.name;
-        viewModalBody.appendChild(title);
-        const ul = document.createElement('div');
-        ul.style.display = 'flex';
-        ul.style.flexDirection = 'column';
-        ul.style.gap = '6px';
-        group.slots
-          .sort((a,b) => DAYS_ALL.indexOf(a.ev.day) - DAYS_ALL.indexOf(b.ev.day) || timeToMinutes(a.ev.start) - timeToMinutes(b.ev.start))
-          .forEach(({idx, ev}) => {
-            const s12 = minutesToTime(timeToMinutes(ev.start));
-            const e12 = minutesToTime(timeToMinutes(ev.end));
-            const line = document.createElement('div'); line.className = 'slot-card';
-            const left = document.createElement('div'); left.className='slot-main';
-            const top = document.createElement('div'); top.className='slot-title';
-            top.textContent = `${ev.day} ${s12}–${e12}`;
-            const meta = document.createElement('div'); meta.className='slot-meta';
-            meta.textContent = `${ev.mode || 'Lecture'}${ev.teacher ? ' • ' + ev.teacher : ''}${ev.location ? ' • ' + ev.location : ''}`;
-            left.appendChild(top); left.appendChild(meta);
-            if (ev.notes) {
-              const notesEl = document.createElement('div');
-              notesEl.className = 'slot-notes';
-              notesEl.textContent = ev.notes;
-              left.appendChild(notesEl);
-            }
-            const actions = document.createElement('div'); actions.className='slot-actions';
-            const edit = document.createElement('button'); edit.className = 'btn secondary'; edit.textContent = 'Edit';
-            const del = document.createElement('button'); del.className = 'btn secondary'; del.textContent = 'Delete';
-            edit.addEventListener('click', () => {
-              // simple edit inline in modal
-              line.innerHTML = '';
-              const daySel = document.createElement('select'); DAYS_ALL.forEach(d => { const o=document.createElement('option'); o.value=d; o.textContent=d; if (d===ev.day) o.selected=true; daySel.appendChild(o); });
-              const sIn = document.createElement('input'); sIn.type = 'time'; sIn.value = ev.start;
-              const eIn = document.createElement('input'); eIn.type = 'time'; eIn.value = ev.end;
-              const modeSel = document.createElement('select'); ['Lecture','Lab','Online'].forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; if ((ev.mode||'Lecture')===t) o.selected=true; modeSel.appendChild(o); });
-              const teacherIn = document.createElement('input'); teacherIn.type='text'; teacherIn.placeholder='Teacher'; teacherIn.value = ev.teacher || '';
-              const locationIn = document.createElement('input'); locationIn.type='text'; locationIn.placeholder='Location'; locationIn.value = ev.location || '';
-              const colorIn = document.createElement('input'); colorIn.type='color'; colorIn.value = ev.color;
-              const notesIn = document.createElement('textarea'); notesIn.rows=2; notesIn.placeholder='Notes'; notesIn.value = ev.notes || ''; notesIn.style.resize='vertical';
-              const save = document.createElement('button'); save.className='btn'; save.textContent='Save';
-              const cancel = document.createElement('button'); cancel.className='btn secondary'; cancel.textContent='Cancel';
-              line.appendChild(daySel); line.appendChild(sIn); line.appendChild(eIn); line.appendChild(modeSel); line.appendChild(teacherIn); line.appendChild(locationIn); line.appendChild(colorIn); line.appendChild(notesIn); line.appendChild(save); line.appendChild(cancel);
-              save.addEventListener('click', () => {
-                const ns=sIn.value, ne=eIn.value;
-                if (!ns || !ne) { alert('Please set start and end time.'); return; }
-                if (timeToMinutes(ne) <= timeToMinutes(ns)) { alert('End time must be after start time.'); return; }
-                events[idx] = { ...events[idx], day: daySel.value, start: ns, end: ne, mode: modeSel.value, teacher: teacherIn.value.trim(), location: locationIn.value.trim(), color: colorIn.value, notes: notesIn.value.trim() };
-                saveEvents(events);
-                renderEventsList();
-                renderTimetable();
-                closeViewModal();
-              });
-              cancel.addEventListener('click', () => { closeViewModal(); });
+      // ---------- Notes (global) ----------
+       function renderNotesListGlobal() {
+        notesListGlobalEl.innerHTML = '';
+        if (!notesGlobal.length) {
+          const empty = document.createElement('div');
+          empty.className = 'event-item';
+          empty.innerHTML = '<div class="event-summary">No notes yet. Use "New Note" to create one. If you added notes to a class earlier, import them below.</div>';
+          notesListGlobalEl.appendChild(empty);
+          // Offer import from class notes
+          const importWrap = document.createElement('div');
+          importWrap.className = 'row';
+          const importBtn = document.createElement('button');
+          importBtn.className = 'btn secondary';
+          importBtn.textContent = 'Import notes from classes';
+          importBtn.addEventListener('click', () => {
+            // Scan events for embedded notes (string or JSON array)
+            const extracted = [];
+            events.forEach(ev => {
+              if (!ev.notes) return;
+              try {
+                const arr = JSON.parse(ev.notes);
+                if (Array.isArray(arr)) {
+                  arr.forEach(it => { if (it && it.text) extracted.push(it.text); });
+                } else if (typeof ev.notes === 'string') {
+                  extracted.push(String(ev.notes));
+                }
+              } catch {
+                extracted.push(String(ev.notes));
+              }
             });
-            del.addEventListener('click', () => {
-              events.splice(idx, 1); saveEvents(events); renderEventsList(); renderTimetable(); closeViewModal();
-            });
-            actions.appendChild(edit); actions.appendChild(del);
-            line.appendChild(left); line.appendChild(actions);
-            ul.appendChild(line);
+            if (!extracted.length) { alert('No notes found inside classes.'); return; }
+            // create one consolidated note
+            const id = crypto.randomUUID();
+            const content = extracted.join('\n\n');
+            notesGlobal.push({ id, title: 'Imported from classes', content, updatedAt: Date.now() });
+            saveNotes(notesGlobal);
+            renderNotesListGlobal();
+            openNote(id);
           });
-        viewModalBody.appendChild(ul);
-        openViewModal();
+          importWrap.appendChild(importBtn);
+          notesListGlobalEl.appendChild(importWrap);
+          return;
+        }
+        // Optionally filter by selected class when a filter is active later
+        notesGlobal
+          .slice()
+          .sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0))
+          .forEach(n => {
+            const item = document.createElement('div'); item.className='note-list-item';
+            const left = document.createElement('div'); left.className='note-title-mini'; left.textContent = n.title || 'Untitled';
+            if (n.className) { left.title = `Class: ${n.className}`; }
+            const openBtn = document.createElement('button'); openBtn.className='btn secondary'; openBtn.textContent='Open';
+            openBtn.addEventListener('click', () => openNote(n.id));
+            item.appendChild(left); item.appendChild(openBtn);
+            notesListGlobalEl.appendChild(item);
+          });
+      }
+      function clearNoteEditor() {
+        activeNoteId = null; noteTitleEl.value = ''; noteContentEl.value = ''; if (noteClassEl) noteClassEl.value='';
+      }
+      function openNote(id) {
+        const n = notesGlobal.find(x => x.id === id);
+        if (!n) { clearNoteEditor(); return; }
+        activeNoteId = n.id; noteTitleEl.value = n.title || ''; noteContentEl.value = n.content || ''; if (noteClassEl) noteClassEl.value = n.className || '';
+      }
+      // no preview now
+      function populateNoteClassOptions() {
+        if (!noteClassEl) return;
+        const selected = noteClassEl.value;
+        const names = Array.from(new Set(events.map(e => (e.name || '').trim()).filter(Boolean))).sort();
+        noteClassEl.innerHTML = '<option value="">No class</option>' + names.map(n=>`<option value="${n}">${n}</option>`).join('');
+        if (selected) {
+          // Try to restore selection
+          const opt = Array.from(noteClassEl.options).find(o=>o.value===selected);
+          if (opt) noteClassEl.value = selected;
+        }
+      }
+      addGlobalNoteBtn.addEventListener('click', () => {
+        const id = crypto.randomUUID();
+        const now = Date.now();
+        const n = { id, title: 'Untitled', content: '', className: noteClassEl ? noteClassEl.value : '', updatedAt: now };
+        notesGlobal.unshift(n);
+        renderNotesListGlobal();
+        openNote(id);
+      });
+      saveGlobalNoteBtn.addEventListener('click', async () => {
+        // If no active note, create one first
+        if (!activeNoteId) {
+          const id = crypto.randomUUID();
+          const now = Date.now();
+          const newNote = {
+            id,
+            title: (noteTitleEl.value || '').trim() || 'Untitled',
+            content: noteContentEl.value || '',
+            className: noteClassEl ? noteClassEl.value : '',
+            updatedAt: now,
+          };
+          notesGlobal.unshift(newNote);
+          activeNoteId = id;
+        }
+        const i = notesGlobal.findIndex(n => n.id === activeNoteId);
+        if (i === -1) return;
+        notesGlobal[i] = { ...notesGlobal[i], title: noteTitleEl.value.trim() || 'Untitled', content: noteContentEl.value, className: noteClassEl ? noteClassEl.value : '', updatedAt: Date.now() };
+        await saveNotes(notesGlobal);
+        renderNotesListGlobal();
+      });
+      deleteGlobalNoteBtn.addEventListener('click', async () => {
+        if (!activeNoteId) return;
+        const i = notesGlobal.findIndex(n => n.id === activeNoteId);
+        if (i === -1) return;
+        if (!confirm('Delete this note?')) return;
+        notesGlobal.splice(i,1);
+        await saveNotes(notesGlobal);
+        renderNotesListGlobal();
+        clearNoteEditor();
+      });
+
+      // Drawer helpers
+      // Drawer state for multi-slot + multi-notes
+      let editWorkingSlots = [];
+      let editWorkingNotes = [];
+      function renderEditSlots() {
+        editTimeSlotsEl.innerHTML = '';
+        (editWorkingSlots.length ? editWorkingSlots : []).forEach((slot, idx) => {
+          const row = document.createElement('div');
+          row.style.display = 'flex'; row.style.gap = '8px'; row.style.alignItems = 'center';
+          const dayLbl = document.createElement('label'); dayLbl.textContent = 'Day';
+          const daySel = document.createElement('select');
+          DAYS_ALL.forEach(d => { const o=document.createElement('option'); o.value=d; o.textContent=d; if (d===slot.day) o.selected=true; daySel.appendChild(o); });
+          daySel.addEventListener('change', () => { editWorkingSlots[idx].day = daySel.value; });
+          const fromLbl = document.createElement('label'); fromLbl.textContent = 'From';
+          const sIn = document.createElement('input'); sIn.type='time'; sIn.value = slot.start; sIn.addEventListener('change', ()=>{ editWorkingSlots[idx].start = sIn.value; });
+          const toLbl = document.createElement('label'); toLbl.textContent = 'To';
+          const eIn = document.createElement('input'); eIn.type='time'; eIn.value = slot.end; eIn.addEventListener('change', ()=>{ editWorkingSlots[idx].end = eIn.value; });
+          const del = document.createElement('button'); del.type='button'; del.className='btn secondary'; del.textContent='Remove';
+          del.addEventListener('click', () => { editWorkingSlots.splice(idx,1); renderEditSlots(); });
+          row.appendChild(dayLbl); row.appendChild(daySel);
+          row.appendChild(fromLbl); row.appendChild(sIn);
+          row.appendChild(toLbl); row.appendChild(eIn);
+          row.appendChild(del);
+          const wrap = document.createElement('div'); wrap.style.border='1px solid var(--border)'; wrap.style.borderRadius='8px'; wrap.style.padding='8px'; wrap.style.background='var(--panel)'; wrap.appendChild(row);
+          editTimeSlotsEl.appendChild(wrap);
+        });
+      }
+      function renderNotes() {
+        notesListEl.innerHTML = '';
+        (editWorkingNotes.length ? editWorkingNotes : []).forEach((note, idx) => {
+          const item = document.createElement('div'); item.className='note-item';
+          const txt = document.createElement('textarea'); txt.value = note.text || ''; txt.rows=2; txt.style.flex='1';
+          txt.style.resize='vertical'; txt.style.background='#0b1220'; txt.style.color='var(--text)'; txt.style.border='1px solid var(--border)'; txt.style.borderRadius='8px'; txt.style.padding='8px';
+          txt.addEventListener('input', () => { editWorkingNotes[idx].text = txt.value; });
+          const del = document.createElement('button'); del.className='note-del'; del.textContent='Delete'; del.addEventListener('click', ()=>{ editWorkingNotes.splice(idx,1); renderNotes(); });
+          item.appendChild(txt); item.appendChild(del);
+          notesListEl.appendChild(item);
+        });
+      }
+      function openDrawerForEvent(index) {
+        const ev = events[index];
+        if (!ev) return;
+        editingIndex = index;
+        editName.value = ev.name || '';
+        editTeacher.value = ev.teacher || '';
+        editLocation.value = ev.location || '';
+        editColor.value = ev.color || '#60a5fa';
+        // Build working slots by collecting all events with the same class name
+        const normalized = (ev.name || '').trim().toLowerCase();
+        editWorkingSlots = events
+          .filter(x => (x.name || '').trim().toLowerCase() === normalized)
+          .map(x => ({ id: x.id, day: x.day, start: x.start, end: x.end }));
+        if (editWorkingSlots.length === 0) {
+          editWorkingSlots = [{ day: DAYS_ALL[0], start: '09:00', end: '10:00' }];
+        }
+        renderEditSlots();
+        // Notes: parse stored JSON array or fallback to single notes string
+        try { editWorkingNotes = JSON.parse(ev.notes || '[]'); if (!Array.isArray(editWorkingNotes)) throw 0; }
+        catch { editWorkingNotes = (ev.notes ? [{ text: ev.notes }] : []); }
+        renderNotes();
+        // Show global notes linked to this class
+        if (linkedNotesEl) {
+          const related = (notesGlobal || []).filter(n => (n.className || '').trim().toLowerCase() === (ev.name||'').trim().toLowerCase());
+          linkedNotesEl.innerHTML = '';
+          if (related.length) {
+            related.forEach(n => {
+              const item = document.createElement('div'); item.className='note-item';
+              const txt = document.createElement('div'); txt.className='note-text'; txt.textContent = (n.title ? n.title + ': ' : '') + (n.content || '');
+              item.appendChild(txt);
+              linkedNotesEl.appendChild(item);
+            });
+          }
+        }
+        drawer.classList.add('open');
+        drawerBackdrop.classList.add('open');
+      }
+      function closeDrawer() { drawer.classList.remove('open'); drawerBackdrop.classList.remove('open'); editingIndex = null; }
+      closeDrawerBtn.addEventListener('click', closeDrawer);
+      drawerBackdrop.addEventListener('click', closeDrawer);
+      addEditSlotBtn.addEventListener('click', () => {
+        editWorkingSlots.push({ day: DAYS_ALL[0], start: '09:00', end: '10:00' });
+        renderEditSlots();
+      });
+      addNoteBtn.addEventListener('click', () => {
+        editWorkingNotes.push({ text: '' });
+        renderNotes();
+      });
+      function validateSlots(slots) {
+        for (const s of slots) {
+          if (!s.start || !s.end) return false;
+          if (timeToMinutes(s.end) <= timeToMinutes(s.start)) return false;
+        }
+        return true;
+      }
+      saveOneBtn.addEventListener('click', () => {
+        if (editingIndex == null) return;
+        const base = events[editingIndex];
+        if (!validateSlots(editWorkingSlots)) { alert('Please ensure each slot has valid start/end times.'); return; }
+        const normalized = (base.name || '').trim().toLowerCase();
+        // Remove all existing slots for this class
+        events = events.filter(e => (e.name || '').trim().toLowerCase() !== normalized);
+        // Add updated slots back
+        editWorkingSlots.forEach(s => {
+          events.push({
+            id: crypto.randomUUID(),
+            name: (editName.value.trim() || base.name),
+            teacher: editTeacher.value.trim(),
+            location: editLocation.value.trim(),
+            mode: base.mode || 'Lecture',
+            color: editColor.value || base.color,
+            day: s.day,
+            start: s.start,
+            end: s.end,
+            notes: JSON.stringify(editWorkingNotes)
+          });
+        });
+        saveEvents(events);
+        renderEventsList();
+        renderTimetable();
+        populateNoteClassOptions();
+        // Refresh linked notes in drawer after save
+        if (linkedNotesEl) {
+          const related = (notesGlobal || []).filter(n => (n.className || '').trim().toLowerCase() === (editName.value||'').trim().toLowerCase());
+          linkedNotesEl.innerHTML = '';
+          related.forEach(n => { const item=document.createElement('div'); item.className='note-item'; const txt=document.createElement('div'); txt.className='note-text'; txt.textContent=(n.title?n.title+': ':'')+(n.content||''); item.appendChild(txt); linkedNotesEl.appendChild(item); });
+        }
+        closeDrawer();
+      });
+      deleteOneBtn.addEventListener('click', () => {
+        if (editingIndex == null) return;
+        const base = events[editingIndex];
+        const normalized = (base.name || '').trim().toLowerCase();
+        if (!confirm('Delete all time slots for this class?')) return;
+        events = events.filter(e => (e.name || '').trim().toLowerCase() !== normalized);
+        saveEvents(events);
+        renderEventsList();
+        renderTimetable();
+        closeDrawer();
+      });
+      function openClassDetailsByName(targetName) {
+        const normalized = (targetName || '').trim().toLowerCase();
+        const matches = events
+          .map((ev, i) => ({ ev, i }))
+          .filter(({ ev }) => (ev.name || '').trim().toLowerCase() === normalized)
+          .sort((a,b) => DAYS_ALL.indexOf(a.ev.day) - DAYS_ALL.indexOf(b.ev.day) || timeToMinutes(a.ev.start) - timeToMinutes(b.ev.start));
+        if (matches.length === 0) return;
+        // open first matching slot in drawer; user can use controls to adjust/change
+        openDrawerForEvent(matches[0].i);
       }
 
       // Handlers
@@ -1116,6 +1448,7 @@
         renderSlots();
         renderEventsList();
         renderTimetable();
+        populateNoteClassOptions();
         // Close modal after adding
         if (typeof closeModal === 'function') closeModal();
       });
@@ -1135,6 +1468,14 @@
           document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
           btn.classList.add('active');
           document.getElementById(btn.dataset.tab).classList.add('active');
+          // Show/hide panels
+          if (btn.dataset.tab === 'tab-notes') {
+            ttPanel.style.display = 'none';
+            notesPanel.style.display = 'block';
+          } else {
+            ttPanel.style.display = 'block';
+            notesPanel.style.display = 'none';
+          }
         });
       });
 
@@ -1150,18 +1491,14 @@
       } else {
         if (restored) { setUser(restored); closeAuth(); } else { openAuth(); }
       }
-      Promise.resolve(loadEvents()).then((e) => { events = e; renderEventsList(); renderTimetable(); });
+      Promise.resolve(loadEvents()).then((e) => { events = e; renderEventsList(); renderTimetable(); populateNoteClassOptions(); });
 
       // Modal behavior
       function openModal() { modal.classList.add('open'); }
       function closeModal() { modal.classList.remove('open'); }
-      function openViewModal() { viewModal.classList.add('open'); }
-      function closeViewModal() { viewModal.classList.remove('open'); }
       openAddModalBtn.addEventListener('click', openModal);
       closeModalBtn.addEventListener('click', closeModal);
       modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-      closeViewModalBtn.addEventListener('click', closeViewModal);
-      viewModal.addEventListener('click', (e) => { if (e.target === viewModal) closeViewModal(); });
     </script>
   </body>
 </html>
