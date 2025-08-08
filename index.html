@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>College Timetable</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --muted: #9ca3af;
+        --text: #e5e7eb;
+        --grid-line: #1f2937;
+        --hour-line: #293445;
+        --accent: #22c55e;
+        --danger: #ef4444;
+        --border: #2a3344;
+      }
+
+      * { box-sizing: border-box; }
+      html, body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 800px at 0% 0%, #0b1220 0%, var(--bg) 45%, #0d1626 100%);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell,
+          Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        line-height: 1.4;
+      }
+
+      header {
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0)) 0 0/100% 1px no-repeat;
+      }
+      header h1 {
+        margin: 0 0 6px 0;
+        font-size: 20px;
+        letter-spacing: 0.2px;
+      }
+      header p { margin: 0; color: var(--muted); font-size: 13px; }
+
+      .container {
+        max-width: 100%;
+        margin: 0 auto;
+        padding: 16px;
+        display: grid;
+        grid-template-columns: clamp(260px, 26vw, 360px) 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+
+      .panel {
+        background: rgba(17, 24, 39, 0.75);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        backdrop-filter: blur(6px);
+        overflow: hidden;
+        position: relative;
+        z-index: 1;
+        min-width: 0;
+      }
+
+      .controls { padding: 14px; overflow: hidden; min-width: 0; }
+      .controls h3 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; max-width: 100%; }
+      label { font-size: 13px; color: var(--muted); }
+      input[type="text"], input[type="time"], select, input[type="color"] {
+        background: #0b1220;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 14px;
+        outline: none;
+      }
+      input[type="time"] { padding-right: 4px; width: 96px; }
+      input[type="color"] { padding: 2px; width: 46px; height: 34px; }
+      select { min-width: 96px; }
+      .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+      .chip {
+        user-select: none;
+        text-align: center;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: #0b1220;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .chip.active { background: #152238; border-color: #37517e; color: #cfe3ff; }
+
+      .btn {
+        background: linear-gradient(180deg, #1a9f55, #168a4a);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .btn.secondary {
+        background: #0b1220;
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+      .btn.danger { background: linear-gradient(180deg, #ef4444, #d33939); }
+      .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+      .events-list { padding: 0 14px 14px 14px; overflow: hidden; min-width: 0; }
+      .events-list h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+      .event-item {
+        display: block; gap: 8px; align-items: center;
+        padding: 8px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; background: #0b1220;
+      }
+      .event-summary { font-size: 13px; color: #cbd5e1; }
+      .event-actions button { margin-left: 6px; }
+
+      /* Tabs */
+      .tabs { display: flex; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: rgba(17,24,39,0.9); z-index: 2; }
+      .tab-btn {
+        padding: 10px 12px;
+        background: transparent;
+        color: var(--muted);
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .tab-btn.active { color: #e2f3ff; border-bottom: 2px solid #60a5fa; }
+      .tab-content { display: none; }
+      .tab-content.active { display: block; }
+
+      /* Accordion for add-class form */
+      .accordion { overflow: hidden; max-height: 0; transition: max-height 240ms ease; border-top: 1px solid var(--border); }
+      .accordion.open { /* max-height is set inline via JS for smooth height */ max-height: 9999px; }
+
+      /* Center modal card */
+      .modal-backdrop {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+        display: none; align-items: center; justify-content: center;
+        z-index: 50;
+      }
+      .modal-backdrop.open { display: flex; }
+      .modal-card {
+        width: min(720px, 92vw);
+        background: rgba(17, 24, 39, 0.98);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      }
+      .modal-header { display:flex; align-items:center; justify-content:space-between; padding: 14px; border-bottom: 1px solid var(--border); }
+      .modal-body { padding: 0 14px 14px 14px; }
+      .slot-card { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:10px; border:1px solid var(--border); border-radius:10px; background:#0b1220; }
+      .slot-main { display:flex; flex-direction:column; }
+      .slot-title { font-weight:600; color:#dbe7ff; }
+      .slot-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .slot-actions button { margin-left: 6px; }
+      .slot-notes { color:#bcd0ff; font-size:12px; margin-top:6px; white-space:pre-wrap; }
+
+      /* Timetable (horizontal time, days on left) */
+      .timetable.panel { padding: 8px; overflow: auto; z-index: 0; position: relative; }
+      .tt-scroll { width: 100%; overflow: auto; }
+      .legend-top { display: grid; grid-template-columns: 120px 1fr; align-items: stretch; gap: 0; }
+      .legend-top .corner { height: 34px; border-right: 1px solid var(--border); }
+      .legend-top .times { position: relative; height: 34px; display: grid; grid-auto-flow: column; gap: 0; }
+      .legend-time-cell { width: var(--step-px, 48px); border-left: 1px solid var(--grid-line); color: var(--muted); font-size: 12px; text-align: center; line-height: 34px; }
+
+      .rows { display: grid; gap: 0; }
+      .day-line { display: grid; grid-template-columns: 120px 1fr; align-items: stretch; min-height: 52px; }
+      .day-label { display: flex; align-items: center; justify-content: flex-end; padding: 0 10px; color: #cbd5e1; border-right: 1px solid var(--border); font-weight: 600; }
+      .day-row { position: relative; min-height: 52px; background: rgba(11, 18, 32, 0.6); }
+      .day-row::before {
+        content: "";
+        position: absolute; inset: 0;
+        background: repeating-linear-gradient(to right,
+          transparent 0,
+          transparent calc(var(--step-px, 48px) - 1px),
+          rgba(255,255,255,0.04) calc(var(--step-px, 48px) - 1px),
+          rgba(255,255,255,0.04) var(--step-px, 48px)
+        );
+        pointer-events: none;
+      }
+
+      .event-block {
+        position: absolute;
+        top: 6px;
+        height: calc(100% - 12px);
+        border-radius: 10px;
+        padding: 8px;
+        color: #0b1220;
+        font-weight: 600;
+        font-size: 12px;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.2);
+        border: 1px solid rgba(0,0,0,0.2);
+        overflow: hidden;
+      }
+      .event-block .subtitle { display: block; font-size: 11px; opacity: 0.85; font-weight: 500; }
+
+      .footer {
+        color: var(--muted);
+        font-size: 12px;
+        padding: 10px 14px 14px 14px;
+      }
+
+      @media (max-width: 980px) {
+        .container { grid-template-columns: 1fr; }
+        .legend-top { grid-template-columns: 90px 1fr; }
+        .day-line { grid-template-columns: 90px 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>workflow</h1>
+    </header>
+
+    <div class="container">
+      <div class="panel">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="tab-timetable">Timetable</button>
+          <button class="tab-btn" data-tab="tab-classes">Classes</button>
+        </div>
+
+        <div id="tab-timetable" class="tab-content active">
+          <div class="controls">
+            <h3>Timetable Settings</h3>
+            <div class="row">
+              <label for="startTime">Start</label>
+              <input id="startTime" type="time" value="08:00" />
+              <label for="endTime">End</label>
+              <input id="endTime" type="time" value="18:00" />
+              <button id="applyTime" class="btn">Apply</button>
+            </div>
+            <div class="row" style="align-items:flex-start;">
+              <label style="margin-top:8px;">Days</label>
+              <div id="daysChooser" class="days"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-classes" class="tab-content">
+          <div class="controls">
+            <h3>Classes</h3>
+            <div class="row" style="justify-content: space-between;">
+              <span style="color:var(--muted); font-size:13px;">Manage your classes and add time slots.</span>
+              <button id="openAddModal" class="btn secondary">+ Add class</button>
+            </div>
+          </div>
+          <div class="events-list">
+            <h3>Classes</h3>
+            <div id="eventsContainer"></div>
+          </div>
+        </div>
+
+        <div class="footer">
+          Tip: Add the same class multiple times on the same day. Adjacent or overlapping times auto-merge into a single block.
+        </div>
+      </div>
+
+      <div class="timetable panel">
+        <div class="tt-scroll">
+          <div class="legend-top">
+            <div class="corner"></div>
+            <div class="times" id="legendTimes"></div>
+          </div>
+          <div class="rows" id="rows"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Class Modal -->
+    <div id="modal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal-card">
+        <div class="modal-header">
+          <strong>Add Class</strong>
+          <button id="closeModal" class="btn secondary">Close</button>
+        </div>
+        <div class="modal-body">
+          <div class="row" style="gap:10px;">
+            <input id="className" type="text" placeholder="Class name (e.g., Calculus)" style="flex:2; min-width:160px;" />
+            <input id="teacherName" type="text" placeholder="Teacher name" style="flex:1; min-width:140px;" />
+            <input id="location" type="text" placeholder="Location" style="flex:1; min-width:140px;" />
+          </div>
+          <div class="row" style="flex-direction:column; align-items:stretch; gap:6px;">
+            <label for="notes" style="color:var(--muted); font-size:12px;">Notes (optional)</label>
+            <textarea id="notes" rows="3" placeholder="Any notes for this class (e.g., materials, meeting link)" style="resize:vertical; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;"></textarea>
+          </div>
+          <div class="row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <label>Time slots</label>
+              <button id="addSlot" type="button" class="btn secondary">+ Add time slot</button>
+            </div>
+            <div id="timeSlots" style="display:flex; flex-direction:column; gap:8px;"></div>
+          </div>
+          <div class="row">
+            <label for="classColor">Color</label>
+            <input id="classColor" type="color" value="#60a5fa" />
+            <button id="addClass" class="btn">Add</button>
+            <button id="clearAll" class="btn danger" title="Remove all classes">Clear All</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- View Class Modal -->
+    <div id="viewModal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal-card">
+        <div class="modal-header">
+          <strong>Class Details</strong>
+          <button id="closeViewModal" class="btn secondary">Close</button>
+        </div>
+        <div id="viewModalBody" class="modal-body"></div>
+      </div>
+    </div>
+
+    <script>
+      const DAYS_ALL = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      const STORAGE_KEYS = { settings: "tt_settings", events: "tt_events" };
+
+      function timeToMinutes(hhmm) {
+        const [h, m] = hhmm.split(":").map(Number);
+        return h * 60 + m;
+      }
+      function minutesToTime(min) {
+        let h = Math.floor(min / 60) % 24;
+        const m = min % 60;
+        const suffix = h >= 12 ? "PM" : "AM";
+        const h12 = h % 12 === 0 ? 12 : h % 12;
+        return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
+      }
+      // Kept for internal computations where needed
+      function minutesToAmPm(min) { return minutesToTime(min); }
+      function clamp(val, a, b) { return Math.min(Math.max(val, a), b); }
+
+      function loadSettings() {
+        const saved = localStorage.getItem(STORAGE_KEYS.settings);
+        if (saved) {
+          try { return JSON.parse(saved); } catch {}
+        }
+        return {
+          start: "08:00",
+          end: "18:00",
+          activeDays: [...DAYS_ALL],
+          rowMinutes: 30,
+        };
+      }
+      function saveSettings(s) {
+        localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(s));
+      }
+      function loadEvents() {
+        const saved = localStorage.getItem(STORAGE_KEYS.events);
+        if (saved) {
+          try { return JSON.parse(saved); } catch {}
+        }
+        return [];
+      }
+      function saveEvents(list) {
+        localStorage.setItem(STORAGE_KEYS.events, JSON.stringify(list));
+      }
+
+      let settings = loadSettings();
+      let events = loadEvents();
+
+      // UI Elements
+      const startTimeEl = document.getElementById("startTime");
+      const endTimeEl = document.getElementById("endTime");
+      const applyTimeBtn = document.getElementById("applyTime");
+      const daysChooser = document.getElementById("daysChooser");
+      const classNameEl = document.getElementById("className");
+      const addSlotBtn = document.getElementById("addSlot");
+      const timeSlotsEl = document.getElementById("timeSlots");
+      const classColorEl = document.getElementById("classColor");
+      const addClassBtn = document.getElementById("addClass");
+      const clearAllBtn = document.getElementById("clearAll");
+      const eventsContainer = document.getElementById("eventsContainer");
+      const legendTimesEl = document.getElementById("legendTimes");
+      const rowsEl = document.getElementById("rows");
+      const tabButtons = document.querySelectorAll('.tab-btn');
+      const ttScroll = document.querySelector('.tt-scroll');
+      const openAddModalBtn = document.getElementById('openAddModal');
+      const modal = document.getElementById('modal');
+      const closeModalBtn = document.getElementById('closeModal');
+      const viewModal = document.getElementById('viewModal');
+      const closeViewModalBtn = document.getElementById('closeViewModal');
+      const viewModalBody = document.getElementById('viewModalBody');
+
+      // Initialize controls with saved settings
+      startTimeEl.value = settings.start;
+      endTimeEl.value = settings.end;
+
+      function renderDaysChooser() {
+        daysChooser.innerHTML = "";
+        DAYS_ALL.forEach((d) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = d;
+          btn.className = `chip ${settings.activeDays.includes(d) ? "active" : ""}`;
+          btn.addEventListener("click", () => {
+            const idx = settings.activeDays.indexOf(d);
+            if (idx >= 0) settings.activeDays.splice(idx, 1); else settings.activeDays.push(d);
+            // Keep order as DAYS_ALL
+            settings.activeDays = DAYS_ALL.filter((x) => settings.activeDays.includes(x));
+            saveSettings(settings);
+            renderDaysChooser();
+            // Align per-slot selected day with active days
+            classSlots = classSlots.map(slot => {
+              let chosen = slot.day;
+              if (!settings.activeDays.includes(chosen)) {
+                chosen = settings.activeDays[0] || DAYS_ALL[0];
+              }
+              return { ...slot, day: chosen };
+            });
+            renderSlots();
+            renderTimetable();
+          });
+          daysChooser.appendChild(btn);
+        });
+      }
+
+      // Time slots management for class creation
+      let classSlots = [ { start: '09:00', end: '10:00', day: (settings.activeDays[0] || DAYS_ALL[0]), mode: 'Lecture' } ];
+      function renderSlots() {
+        timeSlotsEl.innerHTML = '';
+        classSlots.forEach((slot, idx) => {
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.gap = '8px';
+          row.style.alignItems = 'center';
+
+          const lbl1 = document.createElement('label'); lbl1.textContent = 'From';
+          const sIn = document.createElement('input'); sIn.type = 'time'; sIn.value = slot.start;
+          sIn.addEventListener('change', () => { classSlots[idx].start = sIn.value; });
+
+          const lbl2 = document.createElement('label'); lbl2.textContent = 'To';
+          const eIn = document.createElement('input'); eIn.type = 'time'; eIn.value = slot.end;
+          eIn.addEventListener('change', () => { classSlots[idx].end = eIn.value; });
+
+          const dayLbl = document.createElement('label'); dayLbl.textContent = 'Day';
+          const daySel = document.createElement('select');
+          (settings.activeDays.length ? settings.activeDays : DAYS_ALL).forEach((d) => {
+            const opt = document.createElement('option');
+            opt.value = d; opt.textContent = d; if (d === slot.day) opt.selected = true; daySel.appendChild(opt);
+          });
+          daySel.addEventListener('change', () => { classSlots[idx].day = daySel.value; });
+
+          const modeLbl = document.createElement('label'); modeLbl.textContent = 'Type';
+          const modeSel = document.createElement('select');
+          ['Lecture', 'Lab', 'Online'].forEach((t) => {
+            const o = document.createElement('option'); o.value = t; o.textContent = t; if (t === (slot.mode || 'Lecture')) o.selected = true; modeSel.appendChild(o);
+          });
+          modeSel.addEventListener('change', () => { classSlots[idx].mode = modeSel.value; });
+
+          const del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'btn secondary';
+          del.textContent = 'Remove';
+          del.addEventListener('click', () => {
+            if (classSlots.length === 1) { classSlots[0] = { start: '09:00', end: '10:00', day: (settings.activeDays[0] || DAYS_ALL[0]), mode: 'Lecture' }; renderSlots(); return; }
+            classSlots.splice(idx, 1); renderSlots();
+          });
+
+          row.appendChild(dayLbl); row.appendChild(daySel);
+          row.appendChild(modeLbl); row.appendChild(modeSel);
+          row.appendChild(lbl1); row.appendChild(sIn);
+          row.appendChild(lbl2); row.appendChild(eIn);
+          row.appendChild(del);
+          const slotWrap = document.createElement('div');
+          slotWrap.appendChild(row);
+          slotWrap.style.border = '1px solid var(--border)';
+          slotWrap.style.borderRadius = '8px';
+          slotWrap.style.padding = '8px';
+          slotWrap.style.background = '#0b1220';
+          timeSlotsEl.appendChild(slotWrap);
+        });
+      }
+      addSlotBtn.addEventListener('click', () => {
+        classSlots.push({ start: '09:00', end: '10:00', day: (settings.activeDays[0] || DAYS_ALL[0]), mode: 'Lecture' });
+        renderSlots();
+      });
+
+      // Merge adjacent or overlapping events for the same class on the same day
+      function mergeEventsForRendering(eventsInput) {
+        const byDayThenClass = new Map();
+        for (const e of eventsInput) {
+          if (!settings.activeDays.includes(e.day)) continue;
+          const key = `${e.day}__${e.name.toLowerCase().trim()}`;
+          if (!byDayThenClass.has(key)) byDayThenClass.set(key, []);
+          byDayThenClass.get(key).push({ ...e });
+        }
+
+        const merged = [];
+        for (const [key, list] of byDayThenClass.entries()) {
+          list.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+          let current = null;
+          for (const item of list) {
+            if (!current) { current = { ...item }; continue; }
+            const curEnd = timeToMinutes(current.end);
+            const nextStart = timeToMinutes(item.start);
+            // If overlapping or touching, merge
+            if (nextStart <= curEnd) {
+              // Extend end if needed and prefer first color/name/day
+              if (timeToMinutes(item.end) > curEnd) current.end = item.end;
+            } else if (nextStart === curEnd) {
+              if (timeToMinutes(item.end) > curEnd) current.end = item.end;
+            } else {
+              merged.push(current);
+              current = { ...item };
+            }
+          }
+          if (current) merged.push(current);
+        }
+        return merged;
+      }
+
+      function renderEventsList() {
+        eventsContainer.innerHTML = "";
+        if (events.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "event-item";
+          empty.innerHTML = `<div class=\"event-summary\">No classes yet. Add one above.</div>`;
+          eventsContainer.appendChild(empty);
+          return;
+        }
+        // Group by class name; single row per class → clicking opens modal summary
+        const byName = new Map();
+        events.forEach((ev, idx) => {
+          const key = ev.name.trim().toLowerCase();
+          if (!byName.has(key)) byName.set(key, { name: ev.name.trim(), color: ev.color, slots: [] });
+          byName.get(key).slots.push({ idx, ev });
+        });
+
+        const list = document.createElement('div');
+        Array.from(byName.values())
+          .sort((a,b) => a.name.localeCompare(b.name))
+          .forEach(group => {
+            const row = document.createElement('div');
+            row.className = 'event-item';
+            const colorDot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${group.color};margin-right:8px;vertical-align:middle;"></span>`;
+            const summary = document.createElement('div');
+            summary.className = 'event-summary';
+            summary.innerHTML = `${colorDot}<strong>${group.name}</strong>`;
+            const open = document.createElement('button'); open.className = 'btn secondary'; open.textContent = 'View';
+            open.addEventListener('click', () => {
+              // Build content inside dedicated view modal
+              viewModalBody.innerHTML = '';
+              const title = document.createElement('div'); title.style.marginBottom = '8px'; title.style.fontWeight='700'; title.style.fontSize='16px'; title.textContent = group.name;
+              viewModalBody.appendChild(title);
+              const ul = document.createElement('div'); ul.style.display = 'flex'; ul.style.flexDirection = 'column'; ul.style.gap = '6px';
+              group.slots
+                .sort((a,b) => DAYS_ALL.indexOf(a.ev.day) - DAYS_ALL.indexOf(b.ev.day) || timeToMinutes(a.ev.start) - timeToMinutes(b.ev.start))
+                .forEach(({idx, ev}) => {
+                  const s12 = minutesToTime(timeToMinutes(ev.start));
+                  const e12 = minutesToTime(timeToMinutes(ev.end));
+                  const line = document.createElement('div'); line.className = 'slot-card';
+                  const left = document.createElement('div'); left.className='slot-main';
+                  const top = document.createElement('div'); top.className='slot-title';
+                  top.textContent = `${ev.day} ${s12}–${e12}`;
+                  const meta = document.createElement('div'); meta.className='slot-meta';
+                  meta.textContent = `${ev.mode || 'Lecture'}${ev.teacher ? ' • ' + ev.teacher : ''}${ev.location ? ' • ' + ev.location : ''}`;
+                  left.appendChild(top); left.appendChild(meta);
+                  if (ev.notes) {
+                    const notesEl = document.createElement('div');
+                    notesEl.className = 'slot-notes';
+                    notesEl.textContent = ev.notes;
+                    left.appendChild(notesEl);
+                  }
+                  const actions = document.createElement('div'); actions.className='slot-actions';
+                  const edit = document.createElement('button'); edit.className = 'btn secondary'; edit.textContent = 'Edit';
+                  const del = document.createElement('button'); del.className = 'btn secondary'; del.textContent = 'Delete';
+                  edit.addEventListener('click', () => {
+                    // simple edit inline in modal
+                    line.innerHTML = '';
+                    const daySel = document.createElement('select'); DAYS_ALL.forEach(d => { const o=document.createElement('option'); o.value=d; o.textContent=d; if (d===ev.day) o.selected=true; daySel.appendChild(o); });
+                    const sIn = document.createElement('input'); sIn.type = 'time'; sIn.value = ev.start;
+                    const eIn = document.createElement('input'); eIn.type = 'time'; eIn.value = ev.end;
+                    const modeSel = document.createElement('select'); ['Lecture','Lab','Online'].forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; if ((ev.mode||'Lecture')===t) o.selected=true; modeSel.appendChild(o); });
+                    const teacherIn = document.createElement('input'); teacherIn.type='text'; teacherIn.placeholder='Teacher'; teacherIn.value = ev.teacher || '';
+                    const locationIn = document.createElement('input'); locationIn.type='text'; locationIn.placeholder='Location'; locationIn.value = ev.location || '';
+                    const colorIn = document.createElement('input'); colorIn.type='color'; colorIn.value = ev.color;
+                    const notesIn = document.createElement('textarea'); notesIn.rows=2; notesIn.placeholder='Notes'; notesIn.value = ev.notes || ''; notesIn.style.resize='vertical';
+                    const save = document.createElement('button'); save.className='btn'; save.textContent='Save';
+                    const cancel = document.createElement('button'); cancel.className='btn secondary'; cancel.textContent='Cancel';
+                    line.appendChild(daySel); line.appendChild(sIn); line.appendChild(eIn); line.appendChild(modeSel); line.appendChild(teacherIn); line.appendChild(locationIn); line.appendChild(colorIn); line.appendChild(notesIn); line.appendChild(save); line.appendChild(cancel);
+                    save.addEventListener('click', () => {
+                      const ns=sIn.value, ne=eIn.value;
+                      if (!ns || !ne) { alert('Please set start and end time.'); return; }
+                      if (timeToMinutes(ne) <= timeToMinutes(ns)) { alert('End time must be after start time.'); return; }
+                      events[idx] = { ...events[idx], day: daySel.value, start: ns, end: ne, mode: modeSel.value, teacher: teacherIn.value.trim(), location: locationIn.value.trim(), color: colorIn.value, notes: notesIn.value.trim() };
+                      saveEvents(events);
+                      renderEventsList();
+                      renderTimetable();
+                      closeViewModal();
+                    });
+                    cancel.addEventListener('click', () => { closeViewModal(); });
+                  });
+                  del.addEventListener('click', () => {
+                    events.splice(idx, 1); saveEvents(events); renderEventsList(); renderTimetable(); closeViewModal();
+                  });
+                  actions.appendChild(edit); actions.appendChild(del);
+                  line.appendChild(left); line.appendChild(actions);
+                  ul.appendChild(line);
+                });
+              viewModalBody.appendChild(ul);
+              openViewModal();
+            });
+            row.appendChild(summary); row.appendChild(open);
+            list.appendChild(row);
+          });
+        eventsContainer.appendChild(list);
+      }
+
+      function renderTimetable() {
+        // Compute grid
+        legendTimesEl.innerHTML = "";
+        rowsEl.innerHTML = "";
+        const startMin = timeToMinutes(settings.start);
+        const endMin = timeToMinutes(settings.end);
+        const step = settings.rowMinutes; // 30
+        const totalSteps = Math.ceil((endMin - startMin) / step);
+        const labelWidth = 120;
+        const containerWidth = (document.querySelector('.timetable.panel')?.clientWidth || 1000);
+        let stepPx = Math.floor((containerWidth - labelWidth - 40) / Math.max(1, totalSteps));
+        stepPx = clamp(stepPx, 36, 100);
+
+        // Top legend with times (label only at the hour marks)
+        legendTimesEl.style.setProperty('--step-px', stepPx + 'px');
+        legendTimesEl.style.gridTemplateColumns = `repeat(${totalSteps}, var(--step-px))`;
+        for (let i = 0; i < totalSteps; i++) {
+          const atMin = startMin + i * step;
+          const cell = document.createElement('div');
+          cell.className = 'legend-time-cell';
+          if (atMin % 60 === 0) {
+            const t12 = minutesToAmPm(atMin);
+            cell.textContent = t12.replace(':00', '');
+          } else {
+            cell.textContent = '';
+          }
+          legendTimesEl.appendChild(cell);
+        }
+
+        // Rows for each active day
+        settings.activeDays.forEach((day) => {
+          const line = document.createElement('div');
+          line.className = 'day-line';
+
+          const label = document.createElement('div');
+          label.className = 'day-label';
+          label.textContent = day;
+
+          const row = document.createElement('div');
+          row.className = 'day-row';
+          row.style.setProperty('--step-px', stepPx + 'px');
+          row.style.width = (totalSteps * stepPx) + 'px';
+
+          line.appendChild(label);
+          line.appendChild(row);
+          rowsEl.appendChild(line);
+        });
+
+        // Render merged event blocks horizontally
+        const merged = mergeEventsForRendering(events);
+        const dayToRow = {};
+        Array.from(rowsEl.children).forEach((line) => {
+          const day = line.querySelector('.day-label').textContent;
+          dayToRow[day] = line.querySelector('.day-row');
+        });
+
+        for (const e of merged) {
+          const row = dayToRow[e.day];
+          if (!row) continue;
+          const s = clamp(timeToMinutes(e.start), startMin, endMin);
+          const t = clamp(timeToMinutes(e.end), startMin, endMin);
+          if (t <= s) continue;
+          const leftPx = ((s - startMin) / step) * stepPx + 2; // small inset
+          const widthPx = ((t - s) / step) * stepPx - 4;
+
+          const block = document.createElement('div');
+          block.className = 'event-block';
+          block.style.left = `${leftPx}px`;
+          block.style.width = `${Math.max(12, widthPx)}px`;
+          block.style.background = `linear-gradient(180deg, ${e.color}cc, ${e.color})`;
+          block.style.borderColor = e.color;
+          block.title = `${e.name} — ${e.day} ${e.start}–${e.end}`;
+          const s12 = minutesToTime(s);
+          const t12 = minutesToTime(t);
+          const metaPieces = [];
+          if (e.mode) metaPieces.push(e.mode);
+          if (e.location) metaPieces.push(e.location);
+          if (e.teacher) metaPieces.push(e.teacher);
+          if (e.notes) metaPieces.push('📝');
+          const metaText = metaPieces.join(' • ');
+          block.innerHTML = `${e.name}${metaText ? `<span class=\"subtitle\">${metaText}</span>` : ''}<span class=\"subtitle\">${s12}–${t12}</span>`;
+          row.appendChild(block);
+        }
+      }
+
+      // Handlers
+      window.addEventListener('resize', () => { renderTimetable(); });
+      applyTimeBtn.addEventListener("click", () => {
+        const s = startTimeEl.value;
+        const e = endTimeEl.value;
+        if (!s || !e) return;
+        if (timeToMinutes(e) <= timeToMinutes(s)) {
+          alert("End time must be after start time.");
+          return;
+        }
+        settings.start = s;
+        settings.end = e;
+        saveSettings(settings);
+        renderTimetable();
+      });
+
+      addClassBtn.addEventListener("click", () => {
+        const name = (classNameEl.value || "").trim();
+        const color = classColorEl.value || "#60a5fa";
+        const teacher = (document.getElementById('teacherName')?.value || '').trim();
+        const location = (document.getElementById('location')?.value || '').trim();
+        const notes = (document.getElementById('notes')?.value || '').trim();
+        if (!name) { alert("Please enter a class name."); return; }
+        if (classSlots.length === 0) { alert("Add at least one time slot."); return; }
+
+        const newEvents = [];
+        for (const sl of classSlots) {
+          const s = sl.start; const e = sl.end; const d = sl.day;
+          if (!s || !e) { alert("Please set start and end time for all slots."); return; }
+          if (timeToMinutes(e) <= timeToMinutes(s)) { alert(`End time must be after start time for ${s}–${e}.`); return; }
+          if (!d) { alert("Select a day for each slot."); return; }
+          newEvents.push({ id: crypto.randomUUID(), name, day: d, start: s, end: e, color, teacher, location, mode: sl.mode || 'Lecture', notes });
+        }
+        events.push(...newEvents);
+        saveEvents(events);
+        classNameEl.value = "";
+        // Reset slots
+        classSlots = [{ start: '09:00', end: '10:00', day: (settings.activeDays[0] || DAYS_ALL[0]), mode: 'Lecture' }];
+        renderSlots();
+        renderEventsList();
+        renderTimetable();
+        // Close modal after adding
+        if (typeof closeModal === 'function') closeModal();
+      });
+
+      clearAllBtn.addEventListener("click", () => {
+        if (!confirm("Remove all classes?")) return;
+        events = [];
+        saveEvents(events);
+        renderEventsList();
+        renderTimetable();
+      });
+
+      // Tabs behavior
+      tabButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          tabButtons.forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById(btn.dataset.tab).classList.add('active');
+        });
+      });
+
+      // Initial render
+      renderDaysChooser();
+      renderSlots();
+      renderEventsList();
+      renderTimetable();
+
+      // Modal behavior
+      function openModal() { modal.classList.add('open'); }
+      function closeModal() { modal.classList.remove('open'); }
+      function openViewModal() { viewModal.classList.add('open'); }
+      function closeViewModal() { viewModal.classList.remove('open'); }
+      openAddModalBtn.addEventListener('click', openModal);
+      closeModalBtn.addEventListener('click', closeModal);
+      modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+      closeViewModalBtn.addEventListener('click', closeViewModal);
+      viewModal.addEventListener('click', (e) => { if (e.target === viewModal) closeViewModal(); });
+    </script>
+  </body>
+</html>
+
+
