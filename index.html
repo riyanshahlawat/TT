@@ -77,7 +77,7 @@
         letter-spacing: 0.1em;
       }
 
-      .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; max-width: 100%; }
+      .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; max-width: 100%; min-width: 0; }
       label { font-size: 13px; color: var(--muted); }
       input[type="text"], input[type="time"], select, input[type="color"] {
         background: #0b1220;
@@ -162,9 +162,12 @@
         border-radius: 12px;
         box-shadow: 0 20px 60px rgba(0,0,0,0.5);
         padding-bottom: env(safe-area-inset-bottom, 0px);
+        display: flex;
+        flex-direction: column;
+        max-height: min(92vh, 100%);
       }
       .modal-header { display:flex; align-items:center; justify-content:space-between; padding: 14px; border-bottom: 1px solid var(--border); }
-      .modal-body { padding: 0 14px 14px 14px; }
+      .modal-body { padding: 0 14px 14px 14px; overflow: auto; max-height: calc(92vh - 56px); }
       .slot-card { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:10px; border:1px solid var(--border); border-radius:10px; background:#0b1220; }
       .slot-main { display:flex; flex-direction:column; }
       .slot-title { font-weight:600; color:#dbe7ff; }
@@ -199,8 +202,9 @@
        .note-title-mini { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       @media (max-width: 600px) {
         .modal-backdrop.open { align-items: flex-end; }
-        .modal-card { width: 100%; border-radius: 12px 12px 0 0; }
-          .notes-editor { height: auto; }
+        .modal-card { width: 100%; border-radius: 12px 12px 0 0; max-height: 92vh; }
+        .modal-header { position: sticky; top: env(safe-area-inset-top, 0px); background: inherit; z-index: 1; }
+        .notes-editor { height: auto; }
       }
 
       /* Timetable (horizontal time, days on left) */
@@ -318,7 +322,7 @@
          .field-row { flex-direction: column; align-items: stretch; gap: 6px; }
          .auth-actions { flex-direction: column; }
          .auth-actions .btn { width: 100%; }
-         input[type="time"], select { width: 100%; min-width: 0; }
+                   input[type="time"], select, .modal-body input[type="text"] { width: 100%; min-width: 0; }
          input[type="color"] { width: 56px; height: 36px; }
          .days { grid-auto-flow: column; grid-template-columns: repeat(7, max-content); overflow-x: auto; -webkit-overflow-scrolling: touch; gap: 8px; padding-bottom: 6px; }
          .chip { min-width: 56px; }
@@ -463,9 +467,9 @@
         </div>
         <div class="modal-body">
           <div class="row" style="gap:10px;">
-            <input id="className" type="text" placeholder="Class name (e.g., Calculus)" style="flex:2; min-width:160px;" />
-            <input id="teacherName" type="text" placeholder="Teacher name" style="flex:1; min-width:140px;" />
-            <input id="location" type="text" placeholder="Location" style="flex:1; min-width:140px;" />
+            <input id="className" type="text" placeholder="Class name (e.g., Calculus)" style="flex:2; min-width:160px; width:100%;" />
+            <input id="teacherName" type="text" placeholder="Teacher name" style="flex:1; min-width:140px; width:100%;" />
+            <input id="location" type="text" placeholder="Location" style="flex:1; min-width:140px; width:100%;" />
           </div>
           <div class="row" style="flex-direction:column; align-items:stretch; gap:6px;">
             <label for="notes" style="color:var(--muted); font-size:12px;">Notes (optional)</label>
@@ -476,13 +480,13 @@
               <label>Time slots</label>
               <button id="addSlot" type="button" class="btn secondary">+ Add time slot</button>
             </div>
-            <div id="timeSlots" style="display:flex; flex-direction:column; gap:8px;"></div>
+            <div id="timeSlots" style="display:flex; flex-direction:column; gap:8px; width:100%;"></div>
           </div>
-          <div class="row">
+          <div class="row" style="align-items: center;">
             <label for="classColor">Color</label>
             <input id="classColor" type="color" value="#60a5fa" />
-            <button id="addClass" class="btn">Add</button>
-            <button id="clearAll" class="btn danger" title="Remove all classes">Clear All</button>
+            <button id="addClass" class="btn" style="flex:1;">Add</button>
+            <button id="clearAll" class="btn danger" title="Remove all classes" style="flex:1;">Clear All</button>
           </div>
         </div>
       </div>
@@ -968,9 +972,7 @@
         timeSlotsEl.innerHTML = '';
         classSlots.forEach((slot, idx) => {
           const row = document.createElement('div');
-          row.style.display = 'flex';
-          row.style.gap = '8px';
-          row.style.alignItems = 'center';
+          row.className = 'row';
 
           const lbl1 = document.createElement('label'); lbl1.textContent = 'From';
           const sIn = document.createElement('input'); sIn.type = 'time'; sIn.value = slot.start;
