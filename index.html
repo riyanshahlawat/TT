@@ -34,6 +34,9 @@
         padding: 18px 20px;
         border-bottom: 1px solid var(--border);
         background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0)) 0 0/100% 1px no-repeat;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
       }
       header h1 {
         margin: 0 0 6px 0;
@@ -233,11 +236,56 @@
         .legend-top { grid-template-columns: 90px 1fr; }
         .day-line { grid-template-columns: 90px 1fr; }
       }
+
+      /* Light theme overrides */
+      [data-theme="light"] {
+        --bg: #f8fafc;
+        --panel: #ffffff;
+        --muted: #475569;
+        --text: #0f172a;
+        --grid-line: #e5e7eb;
+        --hour-line: #cbd5e1;
+        --accent: #16a34a;
+        --danger: #dc2626;
+        --border: #e2e8f0;
+      }
+      [data-theme="light"] body {
+        background: radial-gradient(1200px 800px at 0% 0%, #ffffff 0%, var(--bg) 45%, #eef2f7 100%);
+        color: var(--text);
+      }
+      [data-theme="light"] .panel { background: rgba(255,255,255,0.85); }
+      [data-theme="light"] .tabs { background: rgba(255,255,255,0.9); border-bottom-color: var(--border); }
+      [data-theme="light"] .tab-btn { color: var(--muted); }
+      [data-theme="light"] .tab-btn.active { color: #0f172a; border-bottom-color: #3b82f6; }
+      [data-theme="light"] .btn.secondary { background: #ffffff; color: var(--text); border-color: var(--border); }
+      [data-theme="light"] .event-item { background: #ffffff; border-color: var(--border); }
+      [data-theme="light"] .modal-card { background: #ffffff; }
+      [data-theme="light"] .slot-card { background: #ffffff; border-color: var(--border); }
+      [data-theme="light"] .day-label { color: #334155; border-right-color: var(--border); }
+      [data-theme="light"] .day-row { background: rgba(255,255,255,0.6); }
+      [data-theme="light"] .chip { background: #ffffff; color: var(--text); border-color: var(--border); }
+      [data-theme="light"] .chip.active { background: #e8f0ff; border-color: #93c5fd; color: #0f172a; }
+      [data-theme="light"] input[type="text"],
+      [data-theme="light"] input[type="email"],
+      [data-theme="light"] input[type="password"],
+      [data-theme="light"] input[type="time"],
+      [data-theme="light"] select,
+      [data-theme="light"] input[type="color"],
+      [data-theme="light"] textarea {
+        background: #ffffff !important;
+        color: var(--text) !important;
+        border-color: var(--border) !important;
+      }
+      [data-theme="light"] .icon-btn { color: var(--muted); border-color: var(--border); background: #ffffff; }
+      [data-theme="light"] .icon-btn:hover { color: #0f172a; border-color: #93c5fd; background: #ffffff; }
+      [data-theme="light"] .auth-tab { background:#ffffff; color: var(--muted); border-color: var(--border); }
+      [data-theme="light"] .auth-tab.active { background:#e8f0ff; color:#0f172a; border-color:#93c5fd; }
     </style>
   </head>
   <body>
     <header>
       <h1>workflow</h1>
+      <button id="themeToggle" class="icon-btn" aria-label="Toggle theme" title="Toggle theme"></button>
     </header>
 
     <div class="container">
@@ -529,6 +577,37 @@
         renderPasswordToggle();
       });
       renderPasswordToggle();
+
+      // Theme toggle
+      const THEME_KEY = 'tt_theme';
+      const themeToggleBtn = document.getElementById('themeToggle');
+      function getInitialTheme() {
+        const saved = localStorage.getItem(THEME_KEY);
+        if (saved === 'light' || saved === 'dark') return saved;
+        return (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+      }
+      function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem(THEME_KEY, theme);
+      }
+      let currentTheme = getInitialTheme();
+      function renderThemeToggle() {
+        const isDark = currentTheme === 'dark';
+        themeToggleBtn.innerHTML = isDark
+          ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm0 4a1 1 0 0 1-1-1v-1a1 1 0 1 1 2 0v1a1 1 0 0 1-1 1Zm0-18a1 1 0 0 1-1-1V2a1 1 0 1 1 2 0v1a1 1 0 0 1-1 1Zm10 8a1 1 0 0 1-1 1h-1a1 1 0 1 1 0-2h1a1 1 0 0 1 1 1ZM4 12a1 1 0 0 1-1 1H2a1 1 0 1 1 0-2h1a1 1 0 0 1 1 1Zm14.95 7.364a1 1 0 0 1-1.414 0l-.707-.707a1 1 0 1 1 1.414-1.414l.707.707a1 1 0 0 1 0 1.414ZM7.172 6.343a1 1 0 0 1-1.414 0l-.707-.707A1 1 0 1 1 6.465 4.222l.707.707a1 1 0 0 1 0 1.414Zm11.314-1.414a1 1 0 0 1 0 1.414l-.707.707A1 1 0 1 1 16.364 5.95l.707-.707a1 1 0 0 1 1.414 0ZM6.343 18.364a1 1 0 0 1 0-1.414l.707-.707a1 1 0 1 1 1.414 1.414l-.707.707a1 1 0 0 1-1.414 0Z"/></svg>'
+          : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>';
+        const label = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+        themeToggleBtn.setAttribute('aria-label', label);
+        themeToggleBtn.setAttribute('title', label);
+      }
+      themeToggleBtn.addEventListener('click', () => {
+        currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        applyTheme(currentTheme);
+        renderThemeToggle();
+      });
+      applyTheme(currentTheme);
+      renderThemeToggle();
+
       // Firebase setup (if config present)
       (function initFirebase(){
         if (!window.FIREBASE_CONFIG) return;
@@ -701,7 +780,7 @@
           slotWrap.style.border = '1px solid var(--border)';
           slotWrap.style.borderRadius = '8px';
           slotWrap.style.padding = '8px';
-          slotWrap.style.background = '#0b1220';
+          slotWrap.style.background = 'var(--panel)';
           timeSlotsEl.appendChild(slotWrap);
         });
       }
