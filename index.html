@@ -645,20 +645,15 @@
         return [];
       }
        async function loadNotes() {
-         // Prefer Firestore; gracefully fall back to local storage and client-side sort
-         try {
-           if (fb.db && currentUser?.uid) {
-             const snap = await fb.db.collection('notes').where('uid','==',currentUser.uid).get();
-             const arr = []; snap.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
-             return arr
-               .map(n=>({ id: n.id, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||0 }))
-               .sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
-           }
-         } catch (err) {
-           console.warn('Load notes from Firestore failed, falling back to local', err);
+         // Cloud-only: requires signed-in user and Firestore
+         if (fb.db && currentUser?.uid) {
+           const snap = await fb.db.collection('notes').where('uid','==',currentUser.uid).get();
+           const arr = []; snap.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
+           return arr
+             .map(n=>({ id: n.id, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||0 }))
+             .sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
          }
-         const key = STORAGE_KEYS.notes + (currentUser?.email ? ':' + currentUser.email : '');
-         try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+         return [];
        }
        async function saveEvents(list) {
         if (fb.db && currentUser?.uid) {
@@ -679,23 +674,17 @@
         localStorage.setItem(key, JSON.stringify(list));
       }
        async function saveNotes(list) {
-         try {
-           if (fb.db && currentUser?.uid) {
-             // Incremental upsert (no deletions) to avoid accidental loss
-             const ref = fb.db.collection('notes');
-             for (const n of list) {
-               const docRef = ref.doc(n.id);
-               await docRef.set({ uid: currentUser.uid, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||Date.now() }, { merge: true });
-             }
-             return true;
-           }
-         } catch (err) {
-           console.warn('Failed to save notes to Firestore, falling back to local storage', err);
-           try { alert('Could not sync notes to cloud. They are saved locally for now.'); } catch {}
+         if (!(fb.db && currentUser?.uid)) {
+           alert('Please sign in to save notes to the cloud.');
+           return false;
          }
-         const key = STORAGE_KEYS.notes + (currentUser?.email ? ':' + currentUser.email : '');
-         localStorage.setItem(key, JSON.stringify(list));
-         return false;
+         // Cloud-only upsert
+         const ref = fb.db.collection('notes');
+         for (const n of list) {
+           const docRef = ref.doc(n.id);
+           await docRef.set({ uid: currentUser.uid, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||Date.now() }, { merge: true });
+         }
+         return true;
        }
 
       let settings = loadSettings();
@@ -1268,11 +1257,13 @@
           if (opt) noteClassEl.value = selected;
         }
       }
-      addGlobalNoteBtn.addEventListener('click', () => {
+      addGlobalNoteBtn.addEventListener('click', async () => {
         const id = crypto.randomUUID();
         const now = Date.now();
         const n = { id, title: 'Untitled', content: '', className: noteClassEl ? noteClassEl.value : '', updatedAt: now };
         notesGlobal = [n, ...notesGlobal];
+        await saveNotes(notesGlobal);
+        try { notesGlobal = await loadNotes(); } catch {}
         renderNotesListGlobal();
         openNote(id);
       });
@@ -1295,7 +1286,7 @@
         if (i === -1) return;
         notesGlobal[i] = { ...notesGlobal[i], title: noteTitleEl.value.trim() || 'Untitled', content: noteContentEl.value, className: noteClassEl ? noteClassEl.value : '', updatedAt: Date.now() };
         const savedToCloud = await saveNotes(notesGlobal);
-        // Ensure latest list is pulled from Firestore after write if available
+        // Ensure latest list is pulled from Firestore after write
         try { if (savedToCloud) notesGlobal = await loadNotes(); } catch {}
         renderNotesListGlobal();
       });
