@@ -645,9 +645,17 @@
         return [];
       }
        async function loadNotes() {
-         if (fb.db && currentUser?.uid) {
-           const snap = await fb.db.collection('notes').where('uid','==',currentUser.uid).orderBy('updatedAt','desc').get();
-           const arr = []; snap.forEach(doc => arr.push({ id: doc.id, ...doc.data() })); return arr.map(n=>({ id: n.id, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||Date.now() }));
+         // Prefer Firestore; gracefully fall back to local storage and client-side sort
+         try {
+           if (fb.db && currentUser?.uid) {
+             const snap = await fb.db.collection('notes').where('uid','==',currentUser.uid).get();
+             const arr = []; snap.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
+             return arr
+               .map(n=>({ id: n.id, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||0 }))
+               .sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
+           }
+         } catch (err) {
+           console.warn('Load notes from Firestore failed, falling back to local', err);
          }
          const key = STORAGE_KEYS.notes + (currentUser?.email ? ':' + currentUser.email : '');
          try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
@@ -672,12 +680,20 @@
       }
        async function saveNotes(list) {
          if (fb.db && currentUser?.uid) {
-           const batch = fb.db.batch();
+           // Incremental upsert instead of destructive rewrite to avoid accidental loss
            const ref = fb.db.collection('notes');
-           const exist = await fb.db.collection('notes').where('uid','==',currentUser.uid).get();
-           exist.forEach(d => batch.delete(d.ref));
-           list.forEach(n => { const docRef = ref.doc(n.id); batch.set(docRef, { uid: currentUser.uid, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||Date.now() }); });
-           await batch.commit(); return;
+           const existing = new Map();
+           const snap = await fb.db.collection('notes').where('uid','==',currentUser.uid).get();
+           snap.forEach(d => existing.set(d.id, d.ref));
+           // Upsert
+           for (const n of list) {
+             const docRef = ref.doc(n.id);
+             await docRef.set({ uid: currentUser.uid, title: n.title||'Untitled', content: n.content||'', className: n.className||'', updatedAt: n.updatedAt||Date.now() }, { merge: true });
+             existing.delete(n.id);
+           }
+           // Optionally delete docs that are not in the list anymore
+           for (const [,refToDelete] of existing) { await refToDelete.delete(); }
+           return;
          }
          const key = STORAGE_KEYS.notes + (currentUser?.email ? ':' + currentUser.email : '');
          localStorage.setItem(key, JSON.stringify(list));
@@ -1244,6 +1260,8 @@
         if (i === -1) return;
         notesGlobal[i] = { ...notesGlobal[i], title: noteTitleEl.value.trim() || 'Untitled', content: noteContentEl.value, className: noteClassEl ? noteClassEl.value : '', updatedAt: Date.now() };
         await saveNotes(notesGlobal);
+        // Ensure latest list is pulled from Firestore after write
+        try { notesGlobal = await loadNotes(); } catch {}
         renderNotesListGlobal();
       });
       deleteGlobalNoteBtn.addEventListener('click', async () => {
@@ -1472,6 +1490,9 @@
           if (btn.dataset.tab === 'tab-notes') {
             ttPanel.style.display = 'none';
             notesPanel.style.display = 'block';
+            // Refresh class options and notes list on view
+            populateNoteClassOptions();
+            renderNotesListGlobal();
           } else {
             ttPanel.style.display = 'block';
             notesPanel.style.display = 'none';
